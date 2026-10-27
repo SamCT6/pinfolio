@@ -106,6 +106,8 @@ export function AddPinForm({ onClose, onSaved, userId }) {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
   const [franchise, setFranchise] = useState("");
+  const [pinSetName, setPinSetName] = useState("");
+  const [pinSets, setPinSets] = useState([]);
   const [park, setPark] = useState("");
   const [year, setYear] = useState("");
   const [owned, setOwned] = useState("1");
@@ -113,6 +115,47 @@ export function AddPinForm({ onClose, onSaved, userId }) {
   const [cost, setCost] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSharedSets() {
+      if (!supabase) return;
+      const allSets = [];
+      for (let start = 0; ; start += 1000) {
+        const { data, error } = await supabase
+          .from("pin_sets")
+          .select("id, name, franchise, release_year, description")
+          .order("name", { ascending: true })
+          .range(start, start + 999);
+
+        if (cancelled) return;
+        if (error) {
+          console.error("Could not load shared pin sets:", error);
+          setMessage("Could not load shared sets. You can still enter a set name manually.");
+          return;
+        }
+        allSets.push(...(data || []));
+        if (!data || data.length < 1000) break;
+      }
+
+      if (!cancelled) setPinSets(allSets);
+    }
+
+    loadSharedSets();
+    return () => { cancelled = true; };
+  }, []);
+
+  function handleSetNameChange(value) {
+    setPinSetName(value);
+    const match = pinSets.find(
+      (set) => set.name.trim().toLowerCase() === value.trim().toLowerCase()
+    );
+    if (match) {
+      if (match.franchise) setFranchise(match.franchise);
+      if (match.release_year) setYear(String(match.release_year));
+    }
+  }
 
   async function searchCatalog() {
     if (!supabase) return;
@@ -177,6 +220,51 @@ export function AddPinForm({ onClose, onSaved, userId }) {
         if (!name.trim()) throw new Error("Pin name is required.");
 
         let imagePath = null;
+        let pinSetId = null;
+        const normalizedSetName = pinSetName.trim().toLowerCase();
+
+        if (normalizedSetName) {
+          const existingSet = pinSets.find(
+            (set) => set.name.trim().toLowerCase() === normalizedSetName
+          );
+
+          if (existingSet) {
+            pinSetId = existingSet.id;
+          } else {
+            const { data: newSet, error: setError } = await supabase
+              .from("pin_sets")
+              .insert({
+                name: pinSetName.trim(),
+                franchise: franchise.trim() || null,
+                release_year: year ? Number(year) : null,
+                created_by: userId,
+              })
+              .select("id, name, franchise, release_year, description")
+              .single();
+
+            if (setError) {
+              // Another user may have created the same set at the same time.
+              if (setError.code === "23505") {
+                const { data: matchingSet, error: lookupError } = await supabase
+                  .from("pin_sets")
+                  .select("id, name, franchise, release_year, description")
+                  .ilike("name", pinSetName.trim())
+                  .limit(1)
+                  .maybeSingle();
+                if (lookupError || !matchingSet) throw setError;
+                pinSetId = matchingSet.id;
+                setPinSets((current) => current.some((set) => set.id === matchingSet.id)
+                  ? current : [...current, matchingSet]);
+              } else {
+                throw setError;
+              }
+            } else {
+              pinSetId = newSet.id;
+              setPinSets((current) => current.some((set) => set.id === newSet.id)
+                ? current : [...current, newSet]);
+            }
+          }
+        }
 
         if (imageFile) {
           const fileExtension = imageFile.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -197,7 +285,9 @@ export function AddPinForm({ onClose, onSaved, userId }) {
             release_year: year ? Number(year) : null,
             image_url: null,
             image_path: imagePath,
+            pin_set_id: pinSetId,
             created_by: userId,
+            is_catalog: true,
           })
           .select("id")
           .single();
@@ -275,8 +365,26 @@ export function AddPinForm({ onClose, onSaved, userId }) {
             <label>Character
               <input value={character} onChange={(e) => setCharacter(e.target.value)} />
             </label>
-            <label>Franchise or set
-              <input value={franchise} onChange={(e) => setFranchise(e.target.value)} />
+            <label>Franchise
+              <input value={franchise} onChange={(e) => setFranchise(e.target.value)} placeholder="e.g. Mickey Mouse" />
+            </label>
+            <label>Set name (optional)
+              <input
+                value={pinSetName}
+                onChange={(e) => handleSetNameChange(e.target.value)}
+                list="pinfolio-shared-set-options"
+                placeholder="Search or enter a shared set name"
+              />
+              <datalist id="pinfolio-shared-set-options">
+                {pinSets.map((set) => (
+                  <option key={set.id} value={set.name}>
+                    {[set.franchise, set.release_year].filter(Boolean).join(" · ")}
+                  </option>
+                ))}
+              </datalist>
+              {pinSets.length > 0 && (
+                <small>Suggestions include {pinSets.length} shared set{pinSets.length === 1 ? "" : "s"} contributed by Pinfolio users.</small>
+              )}
             </label>
             <label>Disney park
               <input value={park} onChange={(e) => setPark(e.target.value)} />
