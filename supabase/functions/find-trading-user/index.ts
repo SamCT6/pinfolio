@@ -99,12 +99,12 @@ Deno.serve(async (req: Request) => {
 
   const username = body.username.trim().replace(/^@/, "").toLowerCase();
 
-  // Find a profile by username, excluding the signed-in user.
+  // Find a profile by exact username, excluding the signed-in user.
+  // The UI reveals only the minimum profile details needed to send a friend request.
   const { data: profile, error: profileError } = await adminSupabase
     .from("profiles")
     .select("id, username, display_name, avatar_url")
     .eq("username", username)
-    .eq("is_collection_public", true)
     .neq("id", user.id)
     .maybeSingle();
 
@@ -132,7 +132,7 @@ Deno.serve(async (req: Request) => {
         : null,
       message: profile
         ? "Trader found."
-        : "No matching trader found. Check the username and make sure their profile is discoverable.",
+        : "No matching user found. Check the exact username and try again.",
     },
     { status: 200, headers: corsHeaders },
   );

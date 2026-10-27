@@ -117,11 +117,21 @@ export default function Friends({ session }) {
     try {
       const { data, error } = await supabase
         .from("collection_items")
-        .select("id,owned_quantity,tradeable_quantity,visibility,pins(id,name,character_name,franchise,park,release_year,image_url,image_path)")
+        .select("id,owned_quantity,tradeable_quantity,visibility,photo_url,photo_path,pins(id,name,character_name,franchise,park,release_year,image_url,image_path)")
         .eq("user_id", profile.id)
         .eq("visibility", "public");
       if (error) throw error;
-      setFriendPins((data || []).filter(row => row.pins).map(row => ({ ...row.pins, owned: row.owned_quantity, tradeable: row.tradeable_quantity })));
+      const resolvedPins = await Promise.all((data || []).filter(row => row.pins).map(async row => {
+        const pin = row.pins;
+        const imagePath = row.photo_path || pin.image_path || null;
+        let displayImageUrl = row.photo_url || pin.image_url || null;
+        if (imagePath && supabase?.storage) {
+          const { data: signed, error: signedError } = await supabase.storage.from("pin-images").createSignedUrl(imagePath, 60 * 60);
+          if (!signedError && signed?.signedUrl) displayImageUrl = signed.signedUrl;
+        }
+        return { ...pin, display_image_url: displayImageUrl, owned: row.owned_quantity, tradeable: row.tradeable_quantity };
+      }));
+      setFriendPins(resolvedPins);
     } catch (error) {
       console.error("Could not load public pins:", error);
       setPinsError("Couldn't load this friend's public pins. Check that the Friends access migration has been applied.");
@@ -134,7 +144,7 @@ export default function Friends({ session }) {
       <div className="friends-profile-heading"><Avatar profile={selectedFriend} /><div><div className="eyebrow">FRIEND'S PROFILE</div><h1>{displayName(selectedFriend)}</h1><p>{selectedFriend.username ? `@${selectedFriend.username}` : "Pinfolio member"} · Public pins only</p></div></div>
       {pinsLoading ? <div className="friends-empty"><LoaderCircle className="spin" size={22} /> Loading public pins…</div> : pinsError ? <div className="friends-alert" role="alert">{pinsError}</div> : friendPins.length === 0 ? <div className="friends-empty"><Heart size={25} /><h3>No public pins yet</h3><p>This friend hasn't shared any collection pins publicly.</p></div> : <>
         <div className="friends-section-heading"><div><h2>Public pins</h2><p>{friendPins.length} {friendPins.length === 1 ? "pin" : "pins"} shared publicly</p></div></div>
-        <div className="friends-pin-grid">{friendPins.map(pin => <article className="friends-pin-card" key={pin.id}><div className="friends-pin-image">{pin.image_url ? <img src={pin.image_url} alt={pin.name} loading="lazy" /> : <div className="friends-pin-placeholder">✦</div>}</div><div className="friends-pin-copy"><strong>{pin.name}</strong>{pin.character_name && <span>{pin.character_name}</span>}{(pin.park || pin.release_year) && <small>{[pin.park, pin.release_year].filter(Boolean).join(" · ")}</small>}</div></article>)}</div>
+        <div className="friends-pin-grid">{friendPins.map(pin => <article className="friends-pin-card" key={pin.id}><div className="friends-pin-image">{pin.display_image_url ? <><img src={pin.display_image_url} alt={pin.name} loading="lazy" onError={event => { event.currentTarget.style.display = "none"; if (event.currentTarget.nextElementSibling) event.currentTarget.nextElementSibling.style.display = "flex"; }} /><div className="friends-pin-placeholder" style={{display:"none"}}>✦</div></> : <div className="friends-pin-placeholder">✦</div>}</div><div className="friends-pin-copy"><strong>{pin.name}</strong>{pin.character_name && <span>{pin.character_name}</span>}{(pin.park || pin.release_year) && <small>{[pin.park, pin.release_year].filter(Boolean).join(" · ")}</small>}</div></article>)}</div>
       </>}
     </section>;
   }

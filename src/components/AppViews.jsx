@@ -4,7 +4,7 @@ import {
   Search, Bell, Plus, ChevronRight, ArrowUpRight, LockKeyhole,
   SlidersHorizontal, Sparkles, ShieldCheck, Menu, X, CircleHelp,
   Settings, Layers3, ChartNoAxesCombined, ImagePlus, EyeOff, Clock3,
-  CheckCircle2, Handshake, ArrowRightLeft
+  CheckCircle2, Handshake, ArrowRightLeft, Palette, Check
 } from "lucide-react";
 import { supabase, isDemoMode } from "../lib/supabase";
 
@@ -578,13 +578,36 @@ export function Wishlist({
 }
 
 
+const PINFOLIO_THEMES = [
+  { id: "classic", name: "Classic", description: "Navy and gold", colors: ["#101b33", "#d7b66a", "#f7f6f2"] },
+  { id: "ocean", name: "Ocean", description: "Deep blue and aqua", colors: ["#123047", "#4fc3c7", "#eef7f8"] },
+  { id: "rose", name: "Rose", description: "Berry and blush", colors: ["#54283f", "#e7a0b4", "#fff4f6"] },
+  { id: "forest", name: "Forest", description: "Evergreen and sage", colors: ["#203d32", "#a5c49a", "#f1f6ef"] },
+  { id: "lavender", name: "Lavender", description: "Plum and lilac", colors: ["#3c315e", "#b8a6e3", "#f6f3fc"] },
+  { id: "sunset", name: "Sunset", description: "Terracotta and peach", colors: ["#713c32", "#f0a477", "#fff3e9"] },
+  { id: "midnight", name: "Midnight", description: "Dark navy and electric blue", colors: ["#101827", "#78a9ff", "#eaf0fa"] },
+  { id: "mint", name: "Mint", description: "Teal and soft mint", colors: ["#164e4a", "#75d6bd", "#effaf5"] },
+  { id: "cherry", name: "Cherry", description: "Cherry red and rosewater", colors: ["#702632", "#ed8b98", "#fff1f2"] },
+  { id: "slate", name: "Slate", description: "Modern charcoal and silver", colors: ["#303944", "#aeb9c5", "#f1f3f5"] },
+  { id: "storybook", name: "Storybook", description: "Royal blue and enchanted gold", colors: ["#24356f", "#f2c75c", "#f4f5ff"] },
+];
+
 export function MorePage({ setPage, session }) {
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem("pinfolio-color-theme") || "classic"; } catch { return "classic"; }
+  });
   const [profile, setProfile] = useState({ username: "", display_name: "", bio: "", is_collection_public: false });
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
   const [setStats, setSetStats] = useState([]);
   const [costTotal, setCostTotal] = useState(0);
+
+  useEffect(() => {
+    const selected = PINFOLIO_THEMES.some(item => item.id === theme) ? theme : "classic";
+    document.documentElement.dataset.theme = selected;
+    try { localStorage.setItem("pinfolio-color-theme", selected); } catch { /* Theme still applies for this session. */ }
+  }, [theme]);
 
   useEffect(() => {
     let active = true;
@@ -623,6 +646,17 @@ export function MorePage({ setPage, session }) {
 
   return <>
     <SectionTitle eyebrow="YOUR PINFOLIO" title="More" subtitle="Profile, collection insights, and privacy controls." />
+    <section className="panel theme-panel" style={{marginTop:20}}>
+      <div className="panel-heading"><div><h2>Color scheme</h2><p>Choose the look you want for Pinfolio. Your choice is saved on this device.</p></div><Palette size={20}/></div>
+      <div className="theme-options" role="radiogroup" aria-label="Color scheme">
+        {PINFOLIO_THEMES.map(option => <button key={option.id} type="button" role="radio" aria-checked={theme === option.id} className={`theme-option ${theme === option.id ? "selected" : ""}`} onClick={() => setTheme(option.id)}>
+          <span className="theme-swatches" aria-hidden="true">{option.colors.map(color => <span key={color} style={{backgroundColor:color}} />)}</span>
+          <span className="theme-option-copy"><strong>{option.name}</strong><small>{option.description}</small></span>
+          {theme === option.id && <Check size={17} className="theme-check"/>}
+        </button>)}
+      </div>
+      <p className="theme-note">Color schemes change the app's main backgrounds, accents, and navigation. You can switch any time.</p>
+    </section>
     <section className="panel settings-panel"><div className="panel-heading"><div><h2>Trader profile</h2><p>Your username is how friends can find you.</p></div><Settings size={20} /></div>
       {profileLoading ? <p>Loading profile…</p> : <form onSubmit={saveProfile} className="settings-form">
         <label htmlFor="profile-username">Username</label><input id="profile-username" value={profile.username} onChange={e => setProfile({...profile,username:e.target.value})} minLength={2} maxLength={30} required placeholder="your_username" />
