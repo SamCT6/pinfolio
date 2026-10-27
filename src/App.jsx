@@ -4,11 +4,12 @@ import {
   Search, Bell, Plus, ChevronRight, ArrowUpRight, LockKeyhole,
   SlidersHorizontal, Sparkles, ShieldCheck, Menu, X, CircleHelp,
   Settings, Layers3, ChartNoAxesCombined, ImagePlus, EyeOff, Clock3,
-  CheckCircle2, Handshake, ArrowRightLeft, LogOut
+  CheckCircle2, Handshake, ArrowRightLeft, LogOut, Users
 } from "lucide-react";
 import { supabase, isDemoMode } from "./lib/supabase";
 import { Dashboard, Collection, Traders, Wishlist, MorePage } from "./components/AppViews.jsx";
 import Catalog from "./components/Catalog.jsx";
+import Friends from "./components/Friends.jsx";
 import { PinDetail, AddPinForm, AddWishlistForm, EditWishlistForm, EditCollectionForm, AuthScreen } from "./forms/PinForms.jsx";
 
 const navItems = [
@@ -16,6 +17,7 @@ const navItems = [
   { id: "Collection", icon: GalleryVerticalEnd },
   { id: "Catalog", icon: Layers3 },
   { id: "Traders", icon: Repeat2 },
+  { id: "Friends", icon: Users },
   { id: "Wishlist", icon: Heart },
   { id: "More", icon: MoreHorizontal }
 ];
@@ -146,7 +148,11 @@ useEffect(() => {
           franchise,
           park,
           image_url,
-          image_path
+          image_path,
+          catalog_code,
+          set_number,
+          pin_set_id,
+          pin_set:pin_sets(name)
         )
       `)
       .eq("user_id", session.user.id)
@@ -159,19 +165,25 @@ useEffect(() => {
       setWishlistError("Couldn't load your wishlist. Please try again.");
       setWishlistItems([]);
     } else {
-      const items = (data || [])
+      const items = await Promise.all((data || [])
         .filter((item) => item.pin)
-        .map((item) => ({
-          id: item.id,
-          pinId: item.pin.id,
-          name: item.pin.name,
-          set: item.pin.franchise || item.pin.park || "Uncategorized",
-          character: item.pin.character_name || "Unknown character",
-          imageUrl: item.photo_url || item.pin.image_url,
-        photoUrl: item.photo_url,
-          priority: item.priority,
-          targetPrice: item.target_price,
-          notes: item.notes,
+        .map(async (item) => {
+          let imageUrl = item.pin.image_url || null;
+          if (item.pin.image_path) {
+            const { data: signedData, error: signedError } = await supabase.storage.from("pin-images").createSignedUrl(item.pin.image_path, 60 * 60);
+            if (!signedError && signedData?.signedUrl) imageUrl = signedData.signedUrl;
+          }
+          return {
+            id: item.id,
+            pinId: item.pin.id,
+            name: item.pin.name,
+            set: item.pin.pin_set?.name || item.pin.franchise || item.pin.park || "Uncategorized",
+            character: item.pin.character_name || "Unknown character",
+            imageUrl,
+            priority: item.priority,
+            targetPrice: item.target_price,
+            notes: item.notes,
+          };
         }));
 
       setWishlistItems(items);
@@ -223,7 +235,11 @@ useEffect(() => {
           release_year,
           edition_type,
           image_url,
-          image_path
+          image_path,
+          catalog_code,
+          set_number,
+          pin_set_id,
+          pin_set:pin_sets(name)
         )
       `)
       .eq("user_id", session.user.id);
@@ -246,8 +262,18 @@ useEffect(() => {
         id: item.pin.id,
         collectionItemId: item.id,
         name: item.pin.name,
-        set: item.pin.franchise || item.pin.park || "Uncategorized",
+        set: item.pin.pin_set?.name || item.pin.franchise || item.pin.park || "Uncategorized",
         character: item.pin.character_name || "Unknown character",
+        franchise: item.pin.franchise || "",
+        park: item.pin.park || "",
+        releaseYear: item.pin.release_year,
+        editionType: item.pin.edition_type || "",
+        description: item.pin.description || "",
+        catalogCode: item.pin.catalog_code || "",
+        setNumber: item.pin.set_number || "",
+        pinSetId: item.pin.pin_set_id || "",
+        imagePath: item.pin.image_path || null,
+        catalogImageUrl: item.pin.image_url || "",
         owned: item.owned_quantity,
         tradeable: item.tradeable_quantity,
         visibility: item.visibility || "private",
@@ -334,6 +360,7 @@ useEffect(() => {
         />
         )}
         {page === "Traders" && <Traders />}
+        {page === "Friends" && <Friends session={session} />}
         {page === "Catalog" && <Catalog userId={session?.user?.id} />}
         
         {page === "Wishlist" && (
@@ -370,7 +397,7 @@ useEffect(() => {
         {page === "More" && <MorePage setPage={navigate} session={session} />}
         <footer className="footer"><span>Pinfolio · Personal pin collection tracker</span><span><LockKeyhole size={13} /> Private by default</span></footer>
       </div>
-        <nav className="mobile-bottom-nav" aria-label="Mobile navigation">{[navItems[0], navItems[1]].map(item => <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => navigate(item.id)}><item.icon size={20} /><span>{item.id}</span></button>)}<button className="mobile-add-pin-button" onClick={() => { setPage("Collection"); setMobileMenuOpen(false); setShowAddPin(true); }} aria-label="Add pin"><Plus size={25} strokeWidth={2.6} /><span>Add pin</span></button>{[navItems[3], navItems[4]].map(item => <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => navigate(item.id)}><item.icon size={20} /><span>{item.id}</span>{item.id === "Traders" && tradeProposalCount > 0 && <span className="nav-count mobile-nav-count">{tradeProposalCount}</span>}</button>)}</nav>
+        <nav className="mobile-bottom-nav" aria-label="Mobile navigation">{[navItems[0], navItems[1]].map(item => <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => navigate(item.id)}><item.icon size={20} /><span>{item.id}</span></button>)}<button className="mobile-add-pin-button" onClick={() => { setPage("Collection"); setMobileMenuOpen(false); setShowAddPin(true); }} aria-label="Add pin"><Plus size={25} strokeWidth={2.6} /><span>Add pin</span></button>{[navItems.find(item => item.id === "Traders"), navItems.find(item => item.id === "Wishlist")].map(item => <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => navigate(item.id)}><item.icon size={20} /><span>{item.id}</span>{item.id === "Traders" && tradeProposalCount > 0 && <span className="nav-count mobile-nav-count">{tradeProposalCount}</span>}</button>)}</nav>
       </main>
       <PinDetail
         pin={selectedPin}
