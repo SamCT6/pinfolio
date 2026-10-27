@@ -1,9 +1,16 @@
+
 import { createClient } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const url = import.meta.env.VITE_SUPABASE_URL?.trim();
+const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
 
-// The app can run in UI demo mode without Supabase credentials.
-// Configure both variables before enabling real accounts or storing private data.
-export const supabase = url && anonKey ? createClient(url, anonKey) : null;
+console.log("Supabase URL loaded:", Boolean(url));
+console.log("Supabase URL format looks valid:", Boolean(
+  url && /^https?:\/\/.+/.test(url)
+));
+console.log("Supabase key loaded:", Boolean(anonKey));
+
+export const supabase =
+  url && anonKey ? createClient(url, anonKey) : null;
+
 export const isDemoMode = !supabase;
