@@ -370,7 +370,7 @@ useEffect(() => {
         {page === "More" && <MorePage setPage={navigate} session={session} />}
         <footer className="footer"><span>Pinfolio · Personal pin collection tracker</span><span><LockKeyhole size={13} /> Private by default</span></footer>
       </div>
-        <nav className="mobile-bottom-nav">{navItems.map(item => <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => navigate(item.id)}><item.icon size={20} /><span>{item.id}</span>{item.id === "Traders" && tradeProposalCount > 0 && <span className="nav-count mobile-nav-count">{tradeProposalCount}</span>}</button>)}</nav>
+        <nav className="mobile-bottom-nav" aria-label="Mobile navigation">{[navItems[0], navItems[1]].map(item => <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => navigate(item.id)}><item.icon size={20} /><span>{item.id}</span></button>)}<button className="mobile-add-pin-button" onClick={() => { setPage("Collection"); setMobileMenuOpen(false); setShowAddPin(true); }} aria-label="Add pin"><Plus size={25} strokeWidth={2.6} /><span>Add pin</span></button>{[navItems[3], navItems[4]].map(item => <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => navigate(item.id)}><item.icon size={20} /><span>{item.id}</span>{item.id === "Traders" && tradeProposalCount > 0 && <span className="nav-count mobile-nav-count">{tradeProposalCount}</span>}</button>)}</nav>
       </main>
       <PinDetail
         pin={selectedPin}

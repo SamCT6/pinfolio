@@ -170,7 +170,10 @@ export function Collection({
         subtitle="Every pin has a place. Keep your collection organized your way."
         action="+ Add pin"
         onAction={onAddPin}
-/>
+      />
+      <button className="button button-gold mobile-add-pin" type="button" onClick={onAddPin}>
+        + Add pin
+      </button>
       <div className="toolbar">
         <div className="search-box"><Search size={17} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search pins, characters, sets..." /></div>
         <button className="button button-secondary filter-button"><SlidersHorizontal size={16} /> Filters</button>
