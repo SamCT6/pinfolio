@@ -596,6 +596,12 @@ export function MorePage({ setPage, session }) {
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem("pinfolio-color-theme") || "classic"; } catch { return "classic"; }
   });
+  const [textSize, setTextSize] = useState(() => {
+    try { return localStorage.getItem("pinfolio-text-size") || "medium"; } catch { return "medium"; }
+  });
+  const [cardSize, setCardSize] = useState(() => {
+    try { return localStorage.getItem("pinfolio-card-size") || localStorage.getItem("pinfolio-pin-image-size") || "medium"; } catch { return "medium"; }
+  });
   const [profile, setProfile] = useState({ username: "", display_name: "", bio: "", is_collection_public: false });
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileSaving, setProfileSaving] = useState(false);
@@ -608,6 +614,17 @@ export function MorePage({ setPage, session }) {
     document.documentElement.dataset.theme = selected;
     try { localStorage.setItem("pinfolio-color-theme", selected); } catch { /* Theme still applies for this session. */ }
   }, [theme]);
+
+  useEffect(() => {
+    const safeTextSize = ["small", "medium", "large"].includes(textSize) ? textSize : "medium";
+    const safeCardSize = ["small", "medium", "large"].includes(cardSize) ? cardSize : "medium";
+    document.documentElement.dataset.textSize = safeTextSize;
+    document.documentElement.dataset.cardSize = safeCardSize;
+    try {
+      localStorage.setItem("pinfolio-text-size", safeTextSize);
+      localStorage.setItem("pinfolio-card-size", safeCardSize);
+    } catch { /* Settings still apply for this session. */ }
+  }, [textSize, cardSize]);
 
   useEffect(() => {
     let active = true;
@@ -656,6 +673,30 @@ export function MorePage({ setPage, session }) {
         </button>)}
       </div>
       <p className="theme-note">Color schemes change the app's main backgrounds, accents, and navigation. You can switch any time.</p>
+    </section>
+    <section className="panel display-settings-panel" style={{marginTop:20}}>
+      <div className="panel-heading"><div><h2>Display preferences</h2><p>Adjust card width and text size across your pin pages. Your choices are saved on this device.</p></div><SlidersHorizontal size={20}/></div>
+      <div className="display-setting-grid">
+        <div className="display-setting-control">
+          <label htmlFor="pinfolio-text-size">Text size</label>
+          <select id="pinfolio-text-size" value={textSize} onChange={event => setTextSize(event.target.value)}>
+            <option value="small">Small — fit more on screen</option>
+            <option value="medium">Medium — default</option>
+            <option value="large">Large — easier to read</option>
+          </select>
+          <p>Changes pin names, details, and catalog text.</p>
+        </div>
+        <div className="display-setting-control">
+          <label htmlFor="pinfolio-card-size">Card size</label>
+          <select id="pinfolio-card-size" value={cardSize} onChange={event => setCardSize(event.target.value)}>
+            <option value="small">Small — show more cards</option>
+            <option value="medium">Medium — default</option>
+            <option value="large">Large — wider cards, fewer per row</option>
+          </select>
+          <p>Changes the width and number of cards per row in Collection, Catalog, Friends, and Traders.</p>
+        </div>
+      </div>
+      <p className="theme-note">These preferences change the display only; they do not alter your pin records or photos.</p>
     </section>
     <section className="panel settings-panel"><div className="panel-heading"><div><h2>Trader profile</h2><p>Your username is how friends can find you.</p></div><Settings size={20} /></div>
       {profileLoading ? <p>Loading profile…</p> : <form onSubmit={saveProfile} className="settings-form">

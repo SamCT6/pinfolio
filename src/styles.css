@@ -770,3 +770,51 @@ button:focus-visible, input:focus-visible { outline: 3px solid #d7b66a; outline-
 .theme-check { flex:0 0 auto; color:var(--navy-2); }
 .theme-note { margin:13px 0 0; color:var(--muted); font-size:11px; line-height:1.6; }
 @media (max-width:560px) { .theme-options { grid-template-columns:1fr; } }
+
+
+/* Personal display preferences: text scaling and actual card width/layout */
+:root[data-text-size="small"] { --pin-text-scale: .88; }
+:root[data-text-size="medium"] { --pin-text-scale: 1; }
+:root[data-text-size="large"] { --pin-text-scale: 1.18; }
+.pin-card-title { font-size: calc(11px * var(--pin-text-scale, 1)); }
+.pin-card-subtitle { font-size: calc(9px * var(--pin-text-scale, 1)); }
+.pin-card-footer, .tradeable-label, .kept-label { font-size: calc(9px * var(--pin-text-scale, 1)); }
+.catalog-pin-info strong { font-size: calc(10px * var(--pin-text-scale, 1)); }
+.catalog-pin-info span, .catalog-pin-info small { font-size: calc(9px * var(--pin-text-scale, 1)); }
+/* Small cards fit more items; large cards use fewer columns and more width. */
+:root[data-card-size="small"] .pin-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+:root[data-card-size="medium"] .pin-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+:root[data-card-size="large"] .pin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+:root[data-card-size="small"] .catalog-pin-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+:root[data-card-size="medium"] .catalog-pin-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+:root[data-card-size="large"] .catalog-pin-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+:root[data-card-size="small"] .friends-pin-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+:root[data-card-size="medium"] .friends-pin-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+:root[data-card-size="large"] .friends-pin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.display-setting-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+.display-setting-control { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.display-setting-control label { font-size:12px; font-weight:700; color:var(--theme-ink, #18243a); }
+.display-setting-control select { width:100%; min-height:42px; border:1px solid var(--line); border-radius:9px; padding:9px 11px; background:var(--white); color:var(--theme-ink); font:inherit; font-size:12px; }
+.display-setting-control p { margin:0; color:var(--muted); font-size:11px; line-height:1.5; }
+@media (max-width:560px) { .display-setting-grid { grid-template-columns:1fr; } }
+
+/* Keep card-size choices responsive on tablets and phones. These rules follow the base responsive styles so the preference wins. */
+@media (max-width:1100px) {
+  :root[data-card-size="small"] .catalog-pin-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  :root[data-card-size="medium"] .catalog-pin-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width:760px) {
+  :root[data-card-size="small"] .pin-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root[data-card-size="medium"] .pin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root[data-card-size="small"] .catalog-pin-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  :root[data-card-size="medium"] .catalog-pin-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root[data-card-size="large"] .catalog-pin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  :root[data-card-size="small"] .friends-pin-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root[data-card-size="medium"] .friends-pin-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width:380px) {
+  :root[data-card-size="small"] .catalog-pin-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  :root[data-card-size="large"] .pin-grid,
+  :root[data-card-size="large"] .friends-pin-grid,
+  :root[data-card-size="large"] .catalog-pin-grid { grid-template-columns: minmax(0, 1fr); }
+}

@@ -24,6 +24,16 @@ const navItems = [
 
 export default function App() {
 
+// Apply saved display preferences on startup, not only after opening More.
+useEffect(() => {
+  try {
+    const textSize = localStorage.getItem("pinfolio-text-size") || "medium";
+    const cardSize = localStorage.getItem("pinfolio-card-size") || localStorage.getItem("pinfolio-pin-image-size") || "medium";
+    document.documentElement.dataset.textSize = ["small", "medium", "large"].includes(textSize) ? textSize : "medium";
+    document.documentElement.dataset.cardSize = ["small", "medium", "large"].includes(cardSize) ? cardSize : "medium";
+  } catch { /* Defaults are supplied by CSS. */ }
+}, []);
+
 const [session, setSession] = useState(null);
 const [authReady, setAuthReady] = useState(false);
 const [tradeProposalCount, setTradeProposalCount] = useState(0);
