@@ -40,6 +40,7 @@ const [session, setSession] = useState(null);
 const [authReady, setAuthReady] = useState(false);
 const [passwordRecovery, setPasswordRecovery] = useState(() => typeof window !== "undefined" && window.location.hash.includes("type=recovery"));
 const [tradeProposalCount, setTradeProposalCount] = useState(0);
+const [profileAvatarUrl, setProfileAvatarUrl] = useState("");
 
 const [page, setPage] = useState("Dashboard");
 const [search, setSearch] = useState("");
@@ -59,6 +60,18 @@ const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 const [editingPin, setEditingPin] = useState(null);
 
 const userEmail = session?.user?.email ?? "Account";
+
+// Keep the signed-in user's profile photo in the app chrome in sync with More settings.
+useEffect(() => {
+  let active = true;
+  async function loadAvatar() {
+    if (!supabase || !session?.user?.id) { setProfileAvatarUrl(""); return; }
+    const { data } = await supabase.from("profiles").select("avatar_url").eq("id", session.user.id).maybeSingle();
+    if (active) setProfileAvatarUrl(data?.avatar_url || "");
+  }
+  loadAvatar();
+  return () => { active = false; };
+}, [session?.user?.id]);
 
 // Keep the Traders badge tied to proposals that are still awaiting a response.
 useEffect(() => {
@@ -355,7 +368,7 @@ useEffect(() => {
         <div className="brand"><div className="brand-mark">✦</div><div><span>Pinfolio</span><small>YOUR PIN COLLECTION</small></div><button className="mobile-close" onClick={() => setMobileMenuOpen(false)}><X size={20} /></button></div>
         <div className="sidebar-label">WORKSPACE</div>
         <nav className="side-nav">{navItems.map(item => <button key={item.id} className={`nav-item ${page === item.id ? "selected" : ""}`} onClick={() => navigate(item.id)}><item.icon size={19} /><span>{item.id}</span>{item.id === "Traders" && <span className="nav-count">{tradeProposalCount}</span>}</button>)}</nav>
-        <div className="sidebar-bottom"><div className="sidebar-tip"><Sparkles size={17} /><strong>A little pin magic</strong><p>Your next favorite might be in a friend's trader list.</p><button onClick={() => navigate("Traders")}>Find a match <ArrowUpRight size={14} /></button></div><div className="profile-row"><div className="avatar profile-avatar">{userEmail.slice(0, 1).toUpperCase()}</div><div className="profile-copy"><strong>My account</strong><span>{userEmail}</span></div><MoreHorizontal size={18} className="muted-icon" /></div><button className="nav-item logout-nav-item" onClick={handleLogout}><LogOut size={19} /><span>Log Out</span></button></div>
+        <div className="sidebar-bottom"><div className="sidebar-tip"><Sparkles size={17} /><strong>A little pin magic</strong><p>Your next favorite might be in a friend's trader list.</p><button onClick={() => navigate("Traders")}>Find a match <ArrowUpRight size={14} /></button></div><div className="profile-row"><div className="avatar profile-avatar">{profileAvatarUrl ? <img src={profileAvatarUrl} alt="Profile" /> : userEmail.slice(0, 1).toUpperCase()}</div><div className="profile-copy"><strong>My account</strong><span>{userEmail}</span></div><MoreHorizontal size={18} className="muted-icon" /></div><button className="nav-item logout-nav-item" onClick={handleLogout}><LogOut size={19} /><span>Log Out</span></button></div>
       </aside>
       {mobileMenuOpen && <button className="mobile-scrim" onClick={() => setMobileMenuOpen(false)} aria-label="Close navigation" />}
       <main className="main-area">
@@ -364,7 +377,7 @@ useEffect(() => {
   title={userEmail}
   aria-label={`Signed in as ${userEmail}`}
 >
-  {userEmail.slice(0, 1).toUpperCase()}
+  {profileAvatarUrl ? <img src={profileAvatarUrl} alt="Profile" /> : userEmail.slice(0, 1).toUpperCase()}
 </div></div></header>
         <div className="page-content">
         {page === "Dashboard" && <Dashboard setPage={navigate} pins={collectionPins} wishlistItems={wishlistItems} loading={collectionLoading || wishlistLoading} />}
@@ -414,7 +427,7 @@ useEffect(() => {
           />
         )}
 
-        {page === "More" && <MorePage setPage={navigate} session={session} />}
+        {page === "More" && <MorePage setPage={navigate} session={session} onAvatarUpdated={setProfileAvatarUrl} />}
         <footer className="footer"><span>Pinfolio · Personal pin collection tracker</span><span><LockKeyhole size={13} /> Private by default</span></footer>
       </div>
         <nav className="mobile-bottom-nav" aria-label="Mobile navigation">{[navItems[0], navItems[1]].map(item => <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => navigate(item.id)}><item.icon size={20} /><span>{item.id}</span></button>)}<button className="mobile-add-pin-button" onClick={() => { setPage("Collection"); setMobileMenuOpen(false); setShowAddPin(true); }} aria-label="Add pin"><Plus size={25} strokeWidth={2.6} /><span>Add pin</span></button>{[navItems.find(item => item.id === "Traders"), navItems.find(item => item.id === "Wishlist")].map(item => <button key={item.id} className={page === item.id ? "active" : ""} onClick={() => navigate(item.id)}><item.icon size={20} /><span>{item.id}</span>{item.id === "Traders" && tradeProposalCount > 0 && <span className="nav-count mobile-nav-count">{tradeProposalCount}</span>}</button>)}</nav>

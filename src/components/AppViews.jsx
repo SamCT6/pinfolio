@@ -464,7 +464,7 @@ export function Traders() {
           <button className="button button-gold" type="submit" disabled={searching}>{searching ? "Searching…" : "Search"}</button>
         </form>
         {searchMessage && <p className="search-result-message" role="status">{searchMessage}</p>}
-        {foundUser && <div className="found-trader"><div className="avatar">{(foundUser.display_name || foundUser.username || "P").slice(0,1).toUpperCase()}</div><div className="recent-copy"><strong>{foundUser.display_name || foundUser.username}</strong><span>@{foundUser.username}</span></div><button className="button button-secondary" onClick={() => sendFriendRequest(foundUser)}>Add friend</button></div>}
+        {foundUser && <div className="found-trader"><div className="avatar">{foundUser.avatar_url ? <img src={foundUser.avatar_url} alt="" /> : (foundUser.display_name || foundUser.username || "P").slice(0,1).toUpperCase()}</div><div className="recent-copy"><strong>{foundUser.display_name || foundUser.username}</strong><span>@{foundUser.username}</span></div><button className="button button-secondary" onClick={() => sendFriendRequest(foundUser)}>Add friend</button></div>}
       </section>
 
       <section className="panel" style={{ marginTop: 20 }}>
@@ -477,11 +477,11 @@ export function Traders() {
 
       <section className="panel" style={{ marginTop: 20 }}>
         <div className="panel-heading"><div><h2>Your friends</h2><p>{friends.length} accepted {friends.length === 1 ? "connection" : "connections"}</p></div><ShieldCheck size={20} /></div>
-        {loading ? <p>Loading friends…</p> : friends.length === 0 ? <p>Once someone accepts your friend request, their shared trader pins will appear here.</p> : <div className="friend-strip">{friends.map(friend => <div className="friend-chip" key={friend.id}><div className="avatar">{(friend.display_name || friend.username || "P").slice(0,1).toUpperCase()}</div><div><strong>{friend.display_name || friend.username}</strong><span>@{friend.username}</span></div></div>)}</div>}
+        {loading ? <p>Loading friends…</p> : friends.length === 0 ? <p>Once someone accepts your friend request, their shared trader pins will appear here.</p> : <div className="friend-strip">{friends.map(friend => <div className="friend-chip" key={friend.id}><div className="avatar">{friend.avatar_url ? <img src={friend.avatar_url} alt="" /> : (friend.display_name || friend.username || "P").slice(0,1).toUpperCase()}</div><div><strong>{friend.display_name || friend.username}</strong><span>@{friend.username}</span></div></div>)}</div>}
       </section>
 
       <div className="trader-heading"><h2>Available to trade</h2><span className="subtle-count">Shared by your friends</span></div>
-      {loading ? <p>Loading shared pins…</p> : traderPins.length === 0 ? <div className="empty-state"><h3>No shared pins yet</h3><p>Ask a friend to set one of their collection pins to “Friends” or “Public” visibility and mark at least one copy tradeable.</p></div> : <div className="pin-grid">{traderPins.map(listing => <article className="pin-card trader-card" key={listing.id}><div className="pin-image-button"><PinArt pin={{ name: listing.name, imageUrl: listing.imageUrl }} /><span className="trade-badge">Tradeable ×{listing.quantity}</span></div><div className="pin-card-body"><div className="pin-card-title">{listing.name}</div><div className="pin-card-subtitle">{listing.set}</div><div className="owner-row"><div className="avatar avatar-small">{(listing.owner?.display_name || listing.owner?.username || "P").slice(0,1).toUpperCase()}</div><span>@{listing.owner?.username || "trader"}</span></div><button className="button button-secondary button-wide" onClick={() => { setOfferListing(listing); setOfferPinId(myPins[0]?.id || ""); setOfferQuantity("1"); setRequestQuantity("1"); setOfferMessage(""); }}>Propose trade <ArrowRightLeft size={15} /></button></div></article>)}</div>}
+      {loading ? <p>Loading shared pins…</p> : traderPins.length === 0 ? <div className="empty-state"><h3>No shared pins yet</h3><p>Ask a friend to set one of their collection pins to “Friends” or “Public” visibility and mark at least one copy tradeable.</p></div> : <div className="pin-grid">{traderPins.map(listing => <article className="pin-card trader-card" key={listing.id}><div className="pin-image-button"><PinArt pin={{ name: listing.name, imageUrl: listing.imageUrl }} /><span className="trade-badge">Tradeable ×{listing.quantity}</span></div><div className="pin-card-body"><div className="pin-card-title">{listing.name}</div><div className="pin-card-subtitle">{listing.set}</div><div className="owner-row"><div className="avatar avatar-small">{listing.owner?.avatar_url ? <img src={listing.owner.avatar_url} alt="" /> : (listing.owner?.display_name || listing.owner?.username || "P").slice(0,1).toUpperCase()}</div><span>@{listing.owner?.username || "trader"}</span></div><button className="button button-secondary button-wide" onClick={() => { setOfferListing(listing); setOfferPinId(myPins[0]?.id || ""); setOfferQuantity("1"); setRequestQuantity("1"); setOfferMessage(""); }}>Propose trade <ArrowRightLeft size={15} /></button></div></article>)}</div>}
 
       <section className="panel" style={{ marginTop: 24 }}>
         <div className="panel-heading"><div><h2>Trade history</h2><p>Active proposals and completed or declined trades.</p></div><ArrowRightLeft size={20} /></div>
@@ -617,7 +617,7 @@ const PINFOLIO_THEMES = [
   { id: "sorcerer", name: "Sorcerer", description: "Red primary, yellow secondary, blue tertiary, with a light blue background", colors: ["#c13a49", "#f4ca35", "#173b78", "#b8dcff"] },
 ];
 
-export function MorePage({ setPage, session }) {
+export function MorePage({ setPage, session, onAvatarUpdated }) {
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem("pinfolio-color-theme") || "classic"; } catch { return "classic"; }
   });
@@ -627,7 +627,8 @@ export function MorePage({ setPage, session }) {
   const [cardSize, setCardSize] = useState(() => {
     try { return localStorage.getItem("pinfolio-card-size") || localStorage.getItem("pinfolio-pin-image-size") || "medium"; } catch { return "medium"; }
   });
-  const [profile, setProfile] = useState({ username: "", display_name: "", bio: "", is_collection_public: false });
+  const [profile, setProfile] = useState({ username: "", display_name: "", bio: "", avatar_url: "", is_collection_public: false });
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMessage, setProfileMessage] = useState("");
@@ -656,12 +657,12 @@ export function MorePage({ setPage, session }) {
     async function loadProfileAndReports() {
       if (!supabase || !session?.user?.id) { setProfileLoading(false); return; }
       const [profileResult, collectionResult, catalogResult] = await Promise.all([
-        supabase.from("profiles").select("username,display_name,bio,is_collection_public").eq("id", session.user.id).maybeSingle(),
+        supabase.from("profiles").select("username,display_name,bio,avatar_url,is_collection_public").eq("id", session.user.id).maybeSingle(),
         supabase.from("collection_items").select("purchase_cost,pin:pins(franchise,park)").eq("user_id", session.user.id),
         supabase.from("pins").select("id,franchise,park"),
       ]);
       if (!active) return;
-      if (profileResult.data) setProfile({ username: profileResult.data.username || "", display_name: profileResult.data.display_name || "", bio: profileResult.data.bio || "", is_collection_public: !!profileResult.data.is_collection_public });
+      if (profileResult.data) setProfile({ username: profileResult.data.username || "", display_name: profileResult.data.display_name || "", bio: profileResult.data.bio || "", avatar_url: profileResult.data.avatar_url || "", is_collection_public: !!profileResult.data.is_collection_public });
       if (collectionResult.data) setCostTotal(collectionResult.data.reduce((sum,row) => sum + (Number(row.purchase_cost) || 0), 0));
       if (catalogResult.data && collectionResult.data) {
         const groups = new Map();
@@ -675,13 +676,48 @@ export function MorePage({ setPage, session }) {
     return () => { active = false; };
   }, [session?.user?.id]);
 
+  async function uploadProfileAvatar(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !supabase || !session?.user?.id) return;
+    if (!file.type.startsWith("image/")) { setProfileMessage("Choose an image file for your profile icon."); return; }
+    if (file.size > 5 * 1024 * 1024) { setProfileMessage("Profile images must be 5 MB or smaller."); return; }
+    setAvatarUploading(true); setProfileMessage("");
+    try {
+      const extension = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+      const path = `${session.user.id}/avatar-${Date.now()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from("profile-avatars").upload(path, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
+      if (uploadError) throw uploadError;
+      const { data: publicData } = supabase.storage.from("profile-avatars").getPublicUrl(path);
+      const avatarUrl = publicData.publicUrl;
+      const { error: updateError } = await supabase.from("profiles").update({ avatar_url: avatarUrl }).eq("id", session.user.id);
+      if (updateError) throw updateError;
+      setProfile(current => ({ ...current, avatar_url: avatarUrl }));
+      onAvatarUpdated?.(avatarUrl);
+      setProfileMessage("Profile icon updated.");
+    } catch (error) {
+      setProfileMessage(error.message || "Could not upload profile icon.");
+    } finally { setAvatarUploading(false); }
+  }
+
+  async function removeProfileAvatar() {
+    if (!supabase || !session?.user?.id) return;
+    setAvatarUploading(true); setProfileMessage("");
+    const { error } = await supabase.from("profiles").update({ avatar_url: null }).eq("id", session.user.id);
+    setAvatarUploading(false);
+    if (error) { setProfileMessage(error.message); return; }
+    setProfile(current => ({ ...current, avatar_url: "" }));
+    onAvatarUpdated?.("");
+    setProfileMessage("Profile icon reset to your initial.");
+  }
+
   async function saveProfile(event) {
     event.preventDefault(); setProfileMessage("");
     if (!supabase || !session?.user?.id) return;
     const username = profile.username.trim().replace(/^@/, "").toLowerCase();
     if (!/^[a-z0-9_.-]{2,30}$/.test(username)) { setProfileMessage("Username must be 2–30 characters and use letters, numbers, periods, underscores, or hyphens."); return; }
     setProfileSaving(true);
-    const { error } = await supabase.from("profiles").upsert({ id: session.user.id, username, display_name: profile.display_name.trim() || null, bio: profile.bio.trim() || null, is_collection_public: profile.is_collection_public }, { onConflict: "id" });
+    const { error } = await supabase.from("profiles").upsert({ id: session.user.id, username, display_name: profile.display_name.trim() || null, bio: profile.bio.trim() || null, is_collection_public: profile.is_collection_public, avatar_url: profile.avatar_url || null }, { onConflict: "id" });
     setProfileSaving(false);
     setProfileMessage(error ? (error.code === "23505" ? "That username is already taken. Try another." : error.message) : "Profile saved.");
   }
@@ -725,6 +761,16 @@ export function MorePage({ setPage, session }) {
     </section>
     <section className="panel settings-panel"><div className="panel-heading"><div><h2>Trader profile</h2><p>Your username is how friends can find you.</p></div><Settings size={20} /></div>
       {profileLoading ? <p>Loading profile…</p> : <form onSubmit={saveProfile} className="settings-form">
+        <label>Profile icon</label>
+        <div className="profile-avatar-editor">
+          <div className="avatar profile-avatar profile-avatar-preview">{profile.avatar_url ? <img src={profile.avatar_url} alt="Your profile icon" /> : (profile.display_name || profile.username || session?.user?.email || "P").slice(0, 1).toUpperCase()}</div>
+          <div className="profile-avatar-actions">
+            <label className="button button-secondary avatar-upload-button" htmlFor="profile-avatar-upload">{avatarUploading ? "Uploading…" : "Choose image"}</label>
+            <input id="profile-avatar-upload" className="avatar-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={uploadProfileAvatar} disabled={avatarUploading} />
+            {profile.avatar_url && <button className="button button-secondary" type="button" onClick={removeProfileAvatar} disabled={avatarUploading}>Reset icon</button>}
+            <small>Upload a JPG, PNG, WebP, or GIF up to 5 MB. Your icon appears in your account header and sidebar.</small>
+          </div>
+        </div>
         <label htmlFor="profile-username">Username</label><input id="profile-username" value={profile.username} onChange={e => setProfile({...profile,username:e.target.value})} minLength={2} maxLength={30} required placeholder="your_username" />
         <label htmlFor="profile-display-name">Display name</label><input id="profile-display-name" value={profile.display_name} onChange={e => setProfile({...profile,display_name:e.target.value})} maxLength={80} placeholder="How friends see your name" />
         <label htmlFor="profile-bio">Bio (optional)</label><textarea id="profile-bio" rows={3} value={profile.bio} onChange={e => setProfile({...profile,bio:e.target.value})} maxLength={300} placeholder="Favorite parks, pin themes, or trading interests" />

@@ -859,3 +859,13 @@ button:focus-visible, input:focus-visible { outline: 3px solid #d7b66a; outline-
 .catalog-pin-info > .authenticity-badge { margin-top:2px; }
 .friends-pin-copy > .authenticity-badge { margin-top:2px; }
 @media (max-width:560px) { .catalog-control-row, .catalog-refine-row { align-items:stretch; flex-direction:column; } .catalog-control-row label, .catalog-refine-row label { justify-content:space-between; } .catalog-control-row select, .catalog-refine-row select { flex:1; } .toolbar-select { width:100%; } .toolbar-select select { flex:1; } }
+
+
+/* Profile icon upload and avatar rendering */
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block; }
+.profile-avatar-editor { display: flex; align-items: center; gap: 16px; margin: 2px 0 12px; }
+.profile-avatar-preview { width: 76px; height: 76px; font-size: 24px; overflow: hidden; }
+.profile-avatar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.profile-avatar-actions small { display: block; flex-basis: 100%; color: var(--muted, #747e8d); font-size: 11px; line-height: 1.5; }
+.avatar-file-input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; clip-path: inset(50%); }
+.avatar-upload-button { cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
