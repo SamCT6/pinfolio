@@ -62,6 +62,17 @@ export function StatCard({ icon: Icon, label, value, note, tone = "" }) {
 }
 
 
+export function AuthenticityBadge({ status }) {
+  const labels = {
+    unknown: "Authenticity unknown",
+    suspected_counterfeit: "Suspected counterfeit",
+    confirmed_counterfeit: "Confirmed counterfeit",
+    verified_authentic: "Verified authentic",
+  };
+  const value = status || "unknown";
+  return <span className={`authenticity-badge authenticity-${value}`} title="Personal authenticity assessment, not an official authentication">{labels[value] || value.replaceAll("_", " ")}</span>;
+}
+
 export function PinCard({ pin, onClick, onEdit }) {
   return (
     <article className="pin-card">
@@ -81,6 +92,7 @@ export function PinCard({ pin, onClick, onEdit }) {
       <div className="pin-card-body">
         <div className="pin-card-title">{pin.name}</div>
         <div className="pin-card-subtitle">{pin.set}</div>
+        <AuthenticityBadge status={pin.authenticityStatus} />
 
         <div className="pin-card-footer">
           <span className="quantity">Owned ×{pin.owned}</span>
@@ -135,7 +147,7 @@ export function Dashboard({ setPage, pins = [], wishlistItems = [], loading = fa
       </div>
       <div className="content-grid dashboard-grid">
         <section className="panel"><div className="panel-heading"><div><h2>Recently added</h2><p>Your latest collection finds</p></div><button className="text-link" onClick={() => setPage("Collection")}>View collection <ChevronRight size={15} /></button></div>
-          {loading ? <p>Loading your collection…</p> : pins.length === 0 ? <div className="empty-state"><h3>Your collection starts here</h3><p>Add your first pin to begin tracking your collection.</p><button className="button button-secondary" onClick={() => setPage("Collection")}>Add a pin</button></div> : <div className="recent-list">{pins.slice(0,3).map(pin => <div className="recent-row" key={pin.collectionItemId || pin.id}><PinArt pin={pin} small /><div className="recent-copy"><strong>{pin.name}</strong><span>{pin.set}</span></div><span className="quantity">×{pin.owned}</span></div>)}</div>}
+          {loading ? <p>Loading your collection…</p> : pins.length === 0 ? <div className="empty-state"><h3>Your collection starts here</h3><p>Add your first pin to begin tracking your collection.</p><button className="button button-secondary" onClick={() => setPage("Collection")}>Add a pin</button></div> : <div className="recent-list">{pins.slice(0,3).map(pin => <div className="recent-row" key={pin.collectionItemId || pin.id}><PinArt pin={pin} small /><div className="recent-copy"><strong>{pin.name}</strong><span>{pin.set}</span><AuthenticityBadge status={pin.authenticityStatus} /></div><span className="quantity">×{pin.owned}</span></div>)}</div>}
         </section>
         <section className="panel wishlist-panel"><div className="panel-heading"><div><h2>Wishlist</h2><p>Your next pin finds</p></div><Heart size={19} className="muted-icon" /></div>
           {loading ? <p>Loading wishlist…</p> : wishlistItems.length === 0 ? <p>Your wishlist is empty. Add pins you hope to find.</p> : wishlistItems.slice(0,4).map(item => <div className="match-row" key={item.id}><div className="match-check"><Heart size={15} /></div><div className="match-copy"><strong>{item.name}</strong><span>{item.priority || "Medium"} priority</span></div></div>)}
@@ -157,11 +169,22 @@ export function Collection({
   onEditPin,
 }) {
   const [filter, setFilter] = useState("All pins");
+  const [authFilter, setAuthFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("recent");
   const filtered = useMemo(() => pins.filter(p => {
-    const matchesSearch = `${p.name} ${p.character} ${p.set}`.toLowerCase().includes(search.toLowerCase());
-    const matchesFilter = filter === "All pins" || (filter === "Tradeable" && p.tradeable > 0) || (filter === "Private" && p.visibility === "private") || (filter === "Friends" && p.visibility === "friends") || (filter === "Public" && p.visibility === "public");
-    return matchesSearch && matchesFilter;
-  }), [pins, search, filter]);
+    const matchesSearch = `${p.name} ${p.character} ${p.set} ${p.franchise || ""} ${p.park || ""}`.toLowerCase().includes(search.toLowerCase());
+    const matchesFilter = filter === "All pins" || (filter === "Tradeable" && p.tradeable > 0) || (filter === "Duplicates" && p.owned > 1) || (filter === "Private" && p.visibility === "private") || (filter === "Friends" && p.visibility === "friends") || (filter === "Public" && p.visibility === "public");
+    const matchesAuth = authFilter === "all" || (p.authenticityStatus || "unknown") === authFilter;
+    return matchesSearch && matchesFilter && matchesAuth;
+  }).sort((a,b) => {
+    if (sortBy === "name-asc") return a.name.localeCompare(b.name);
+    if (sortBy === "name-desc") return b.name.localeCompare(a.name);
+    if (sortBy === "year-new") return (Number(b.releaseYear) || 0) - (Number(a.releaseYear) || 0) || a.name.localeCompare(b.name);
+    if (sortBy === "year-old") return (Number(a.releaseYear) || 9999) - (Number(b.releaseYear) || 9999) || a.name.localeCompare(b.name);
+    if (sortBy === "quantity") return (Number(b.owned) || 0) - (Number(a.owned) || 0);
+    if (sortBy === "tradeable") return (Number(b.tradeable) || 0) - (Number(a.tradeable) || 0);
+    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+  }), [pins, search, filter, authFilter, sortBy]);
   return (
     <>
       <SectionTitle
@@ -176,9 +199,10 @@ export function Collection({
       </button>
       <div className="toolbar">
         <div className="search-box"><Search size={17} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search pins, characters, sets..." /></div>
-        <button className="button button-secondary filter-button"><SlidersHorizontal size={16} /> Filters</button>
+        <label className="toolbar-select"><SlidersHorizontal size={15}/><span className="sr-only">Sort collection</span><select value={sortBy} onChange={e => setSortBy(e.target.value)} aria-label="Sort collection"><option value="recent">Recently added</option><option value="name-asc">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="year-new">Release year: newest</option><option value="year-old">Release year: oldest</option><option value="quantity">Most owned</option><option value="tradeable">Most tradeable</option></select></label>
       </div>
-      <div className="filter-chips">{["All pins", "Tradeable", "Private", "Friends", "Public"].map(f => <button key={f} className={`chip ${filter === f ? "active" : ""}`} onClick={() => setFilter(f)}>{f}</button>)}</div>
+      <div className="filter-chips">{["All pins", "Tradeable", "Duplicates", "Private", "Friends", "Public"].map(f => <button key={f} className={`chip ${filter === f ? "active" : ""}`} onClick={() => setFilter(f)}>{f}</button>)}</div>
+      <div className="catalog-refine-row"><label>Authenticity <select value={authFilter} onChange={e => setAuthFilter(e.target.value)}><option value="all">Any status</option><option value="unknown">Unknown</option><option value="verified_authentic">Verified authentic</option><option value="suspected_counterfeit">Suspected counterfeit</option><option value="confirmed_counterfeit">Confirmed counterfeit</option></select></label><span>{filtered.length} result{filtered.length === 1 ? "" : "s"}</span></div>
       {loading ? (
   <p>Loading your collection...</p>
       ) : filtered.length === 0 ? (
@@ -590,6 +614,7 @@ const PINFOLIO_THEMES = [
   { id: "cherry", name: "Cherry", description: "Cherry red and rosewater", colors: ["#702632", "#ed8b98", "#fff1f2"] },
   { id: "slate", name: "Slate", description: "Modern charcoal and silver", colors: ["#303944", "#aeb9c5", "#f1f3f5"] },
   { id: "storybook", name: "Storybook", description: "Royal blue and enchanted gold", colors: ["#24356f", "#f2c75c", "#f4f5ff"] },
+  { id: "sorcerer", name: "Sorcerer", description: "Red primary, yellow secondary, blue tertiary, with a light blue background", colors: ["#c13a49", "#f4ca35", "#173b78", "#b8dcff"] },
 ];
 
 export function MorePage({ setPage, session }) {

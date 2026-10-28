@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Upload, Layers3, CircleHelp, CheckCircle2, Image as ImageIcon, Heart } from "lucide-react";
+import { Search, Upload, Layers3, CircleHelp, CheckCircle2, Image as ImageIcon, Heart, ArrowUpDown } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 function parseCsv(text) {
@@ -44,6 +44,10 @@ export default function Catalog({ userId }) {
   const [wishlistedIds, setWishlistedIds] = useState(new Set());
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("name-asc");
+  const [yearFilter, setYearFilter] = useState("all");
+  const [authFilter, setAuthFilter] = useState("all");
+  const [authByPinId, setAuthByPinId] = useState(new Map());
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
@@ -56,7 +60,7 @@ export default function Catalog({ userId }) {
       const [setRows, pinRows, inventoryResult, wishlistResult] = await Promise.all([
         fetchAll("pin_sets", "id, name, franchise, release_year, image_url, description"),
         fetchAll("pins", "id, name, description, character_name, franchise, park, release_year, edition_type, image_url, image_path, catalog_code, pin_set_id, set_number, is_catalog"),
-        supabase.from("collection_items").select("pin_id, owned_quantity").eq("user_id", userId || "00000000-0000-0000-0000-000000000000"),
+        supabase.from("collection_items").select("pin_id, owned_quantity, authenticity_status, created_at").eq("user_id", userId || "00000000-0000-0000-0000-000000000000"),
         userId ? supabase.from("wishlist_items").select("pin_id").eq("user_id", userId) : Promise.resolve({ data: [], error: null }),
       ]);
       if (inventoryResult.error) throw inventoryResult.error;
@@ -71,7 +75,11 @@ export default function Catalog({ userId }) {
       }));
       setSets(setRows);
       setPins(resolvedPins);
-      setOwnedIds(new Set((inventoryResult.data || []).filter(row => Number(row.owned_quantity) > 0).map(row => row.pin_id)));
+      const inventoryRows = inventoryResult.data || [];
+      setOwnedIds(new Set(inventoryRows.filter(row => Number(row.owned_quantity) > 0).map(row => row.pin_id)));
+      const authenticityMap = new Map();
+      inventoryRows.forEach(row => { if (!authenticityMap.has(row.pin_id) || (authenticityMap.get(row.pin_id) === "unknown" && row.authenticity_status)) authenticityMap.set(row.pin_id, row.authenticity_status || "unknown"); });
+      setAuthByPinId(authenticityMap);
       setWishlistedIds(new Set((wishlistResult.data || []).map(row => row.pin_id)));
     } catch (e) { setError(e.message || "Could not load the pin catalog."); }
     finally { setLoading(false); }
@@ -88,8 +96,17 @@ export default function Catalog({ userId }) {
     if (filter === "standalone" && pin.pin_set_id) return false;
     if (filter === "owned" && !ownedIds.has(pin.id)) return false;
     if (filter === "missing" && ownedIds.has(pin.id)) return false;
+    if (yearFilter !== "all" && String(pin.release_year || "") !== yearFilter) return false;
+    if (authFilter !== "all" && (authByPinId.get(pin.id) || "unknown") !== authFilter) return false;
     return true;
-  }), [pins, setById, search, filter, ownedIds]);
+  }).sort((a,b) => {
+    if (sortBy === "name-desc") return b.name.localeCompare(a.name);
+    if (sortBy === "year-new") return (Number(b.release_year) || 0) - (Number(a.release_year) || 0) || a.name.localeCompare(b.name);
+    if (sortBy === "year-old") return (Number(a.release_year) || 9999) - (Number(b.release_year) || 9999) || a.name.localeCompare(b.name);
+    if (sortBy === "owned-first") return Number(ownedIds.has(b.id)) - Number(ownedIds.has(a.id)) || a.name.localeCompare(b.name);
+    if (sortBy === "missing-first") return Number(ownedIds.has(a.id)) - Number(ownedIds.has(b.id)) || a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name);
+  }), [pins, setById, search, filter, ownedIds, sortBy, yearFilter, authFilter, authByPinId]);
 
   const setCards = useMemo(() => sets.map(set => {
     const setPins = filteredPins.filter(pin => pin.pin_set_id === set.id);
@@ -188,16 +205,17 @@ export default function Catalog({ userId }) {
     <div className="catalog-stats"><div><span>Catalog pins</span><strong>{pins.length.toLocaleString()}</strong></div><div><span>Sets</span><strong>{sets.length.toLocaleString()}</strong></div><div><span>In your collection</span><strong>{pins.filter(pin => ownedIds.has(pin.id)).length.toLocaleString()}</strong></div><div><span>Standalone pins</span><strong>{pins.filter(pin => !pin.pin_set_id).length.toLocaleString()}</strong></div></div>
     <div className="toolbar catalog-toolbar"><div className="search-box"><Search size={17}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search pins, characters, sets, catalog code…"/></div></div>
     <div className="filter-chips catalog-filters">{[{id:"all",label:"All pins"},{id:"sets",label:"Pins in sets"},{id:"standalone",label:"Not in sets"},{id:"owned",label:"I own"},{id:"missing",label:"Still need"}].map(item => <button key={item.id} className={`chip ${filter===item.id?"active":""}`} onClick={() => setFilter(item.id)}>{item.label}</button>)}</div>
+    <div className="catalog-control-row"><label><ArrowUpDown size={15}/> Sort <select value={sortBy} onChange={e => setSortBy(e.target.value)}><option value="name-asc">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="year-new">Release year: newest</option><option value="year-old">Release year: oldest</option><option value="owned-first">Owned first</option><option value="missing-first">Missing first</option></select></label><label>Release year <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}><option value="all">All years</option>{[...new Set(pins.map(p => String(p.release_year || "")).filter(Boolean))].sort((a,b) => Number(b)-Number(a)).map(year => <option key={year} value={year}>{year}</option>)}</select></label><label>Authenticity <select value={authFilter} onChange={e => setAuthFilter(e.target.value)}><option value="all">Any status</option><option value="unknown">Unknown</option><option value="verified_authentic">Verified authentic</option><option value="suspected_counterfeit">Suspected counterfeit</option><option value="confirmed_counterfeit">Confirmed counterfeit</option></select></label><span className="catalog-result-count">{filteredPins.length} pins</span></div>
     {loading ? <div className="panel">Loading catalog…</div> : error && !pins.length ? <div className="panel">The catalog could not be loaded. Check the migration and Supabase permissions.</div> : !pins.length ? <div className="panel catalog-empty"><Layers3 size={30}/><h2>Your catalog is ready for data</h2><p>Import a licensed, accurate CSV of Disney pins to populate current and historical sets. The catalog feature is ready, but a complete catalog dataset has not been bundled because its accuracy and image/data rights need to be verified.</p><button className="button button-gold" onClick={downloadTemplate}>Download CSV template</button></div> : <>
-      {(filter !== "standalone") && setCards.map(set => <section className="catalog-set" key={set.id}><div className="catalog-set-heading"><div className="catalog-set-mark"><Layers3 size={19}/></div><div className="catalog-set-title"><h2>{set.name}</h2><p>{[set.franchise, set.release_year].filter(Boolean).join(" · ") || "Disney pin set"}</p></div><div className="catalog-progress"><strong>{set.ownedCount}/{set.pinCount}</strong><span>collected</span></div></div><div className="catalog-progress-track"><span style={{width: `${set.pinCount ? set.ownedCount / set.pinCount * 100 : 0}%`}}/></div><div className="catalog-pin-grid">{set.visiblePins.map(pin => <CatalogPin key={pin.id} pin={pin} owned={ownedIds.has(pin.id)} userId={userId} wishlisted={wishlistedIds.has(pin.id)} onAdded={loadCatalog} onWishlisted={loadCatalog} setMessage={setMessage} setError={setError}/>)}</div></section>)}
-      {(filter !== "sets") && standalonePins.length > 0 && <section className="catalog-set"><div className="catalog-set-heading"><div className="catalog-set-mark"><ImageIcon size={19}/></div><div className="catalog-set-title"><h2>Pins Not in Sets</h2><p>Individual releases and standalone pins</p></div><div className="catalog-progress"><strong>{standalonePins.filter(pin => ownedIds.has(pin.id)).length}/{standalonePins.length}</strong><span>collected</span></div></div><div className="catalog-pin-grid">{standalonePins.map(pin => <CatalogPin key={pin.id} pin={pin} owned={ownedIds.has(pin.id)} userId={userId} wishlisted={wishlistedIds.has(pin.id)} onAdded={loadCatalog} onWishlisted={loadCatalog} setMessage={setMessage} setError={setError}/>)}</div></section>}
+      {(filter !== "standalone") && setCards.map(set => <section className="catalog-set" key={set.id}><div className="catalog-set-heading"><div className="catalog-set-mark"><Layers3 size={19}/></div><div className="catalog-set-title"><h2>{set.name}</h2><p>{[set.franchise, set.release_year].filter(Boolean).join(" · ") || "Disney pin set"}</p></div><div className="catalog-progress"><strong>{set.ownedCount}/{set.pinCount}</strong><span>collected</span></div></div><div className="catalog-progress-track"><span style={{width: `${set.pinCount ? set.ownedCount / set.pinCount * 100 : 0}%`}}/></div><div className="catalog-pin-grid">{set.visiblePins.map(pin => <CatalogPin key={pin.id} pin={pin} owned={ownedIds.has(pin.id)} userId={userId} wishlisted={wishlistedIds.has(pin.id)} authenticityStatus={authByPinId.get(pin.id) || "unknown"} onAdded={loadCatalog} onWishlisted={loadCatalog} setMessage={setMessage} setError={setError}/>)}</div></section>)}
+      {(filter !== "sets") && standalonePins.length > 0 && <section className="catalog-set"><div className="catalog-set-heading"><div className="catalog-set-mark"><ImageIcon size={19}/></div><div className="catalog-set-title"><h2>Pins Not in Sets</h2><p>Individual releases and standalone pins</p></div><div className="catalog-progress"><strong>{standalonePins.filter(pin => ownedIds.has(pin.id)).length}/{standalonePins.length}</strong><span>collected</span></div></div><div className="catalog-pin-grid">{standalonePins.map(pin => <CatalogPin key={pin.id} pin={pin} owned={ownedIds.has(pin.id)} userId={userId} wishlisted={wishlistedIds.has(pin.id)} authenticityStatus={authByPinId.get(pin.id) || "unknown"} onAdded={loadCatalog} onWishlisted={loadCatalog} setMessage={setMessage} setError={setError}/>)}</div></section>}
       {filteredPins.length === 0 && <div className="panel catalog-empty"><Search size={24}/><h2>No pins match</h2><p>Try a different search or filter.</p></div>}
     </>}
     <p className="catalog-footnote">Collection progress is based on catalog pins matched to your own inventory. Catalog images and data should come from sources you’re authorized to import.</p>
   </>;
 }
 
-function CatalogPin({ pin, owned, wishlisted, userId, onAdded, onWishlisted, setMessage, setError }) {
+function CatalogPin({ pin, owned, wishlisted, authenticityStatus = "unknown", userId, onAdded, onWishlisted, setMessage, setError }) {
   const [adding, setAdding] = useState(false);
   const [imageFailed, setImageFailed] = useState(false);
   const [addingWish, setAddingWish] = useState(false);
@@ -231,5 +249,5 @@ function CatalogPin({ pin, owned, wishlisted, userId, onAdded, onWishlisted, set
     finally { setAddingWish(false); }
   }
   const photo = pin.display_image_url || pin.image_url;
-  return <article className={`catalog-pin ${owned ? "catalog-pin-owned" : ""}`}><div className="catalog-pin-art">{photo && !imageFailed ? <img src={photo} alt={pin.name} loading="lazy" onError={() => setImageFailed(true)}/> : <span>✦</span>}{owned && <span className="catalog-owned-check"><CheckCircle2 size={15}/></span>}</div><div className="catalog-pin-info"><strong title={pin.name}>{pin.name}</strong><span>{[pin.character_name, pin.release_year].filter(Boolean).join(" · ") || pin.franchise || pin.park || "Disney pin"}</span>{pin.set_number && <small>#{pin.set_number}</small>}<button className="catalog-add-button" onClick={addToCollection} disabled={adding}>{adding ? "Adding…" : owned ? "+ Add another" : "+ Add to collection"}</button><button type="button" className={`catalog-wishlist-button ${wishlisted ? "is-wishlisted" : ""}`} onClick={addToWishlist} disabled={addingWish || wishlisted}><Heart size={14} fill={wishlisted ? "currentColor" : "none"}/>{addingWish ? "Adding…" : wishlisted ? "On wishlist" : "Add to wishlist"}</button></div></article>;
+  return <article className={`catalog-pin ${owned ? "catalog-pin-owned" : ""}`}><div className="catalog-pin-art">{photo && !imageFailed ? <img src={photo} alt={pin.name} loading="lazy" onError={() => setImageFailed(true)}/> : <span>✦</span>}{owned && <span className="catalog-owned-check"><CheckCircle2 size={15}/></span>}</div><div className="catalog-pin-info"><strong title={pin.name}>{pin.name}</strong><span>{[pin.character_name, pin.release_year].filter(Boolean).join(" · ") || pin.franchise || pin.park || "Disney pin"}</span>{pin.set_number && <small>#{pin.set_number}</small>}<span className={`authenticity-badge authenticity-${authenticityStatus}`}>{({unknown:"Authenticity unknown",verified_authentic:"Verified authentic",suspected_counterfeit:"Suspected counterfeit",confirmed_counterfeit:"Confirmed counterfeit"})[authenticityStatus] || "Authenticity unknown"}</span><button className="catalog-add-button" onClick={addToCollection} disabled={adding}>{adding ? "Adding…" : owned ? "+ Add another" : "+ Add to collection"}</button><button type="button" className={`catalog-wishlist-button ${wishlisted ? "is-wishlisted" : ""}`} onClick={addToWishlist} disabled={addingWish || wishlisted}><Heart size={14} fill={wishlisted ? "currentColor" : "none"}/>{addingWish ? "Adding…" : wishlisted ? "On wishlist" : "Add to wishlist"}</button></div></article>;
 }

@@ -818,3 +818,44 @@ button:focus-visible, input:focus-visible { outline: 3px solid #d7b66a; outline-
   :root[data-card-size="large"] .friends-pin-grid,
   :root[data-card-size="large"] .catalog-pin-grid { grid-template-columns: minmax(0, 1fr); }
 }
+
+
+/* Sorcerer: red primary, yellow secondary, blue tertiary, with a light-blue background. */
+:root[data-theme="sorcerer"] { --navy:#c13a49; --navy-2:#173b78; --cream:#b8dcff; --gold:#f4ca35; --line:#7eafe8; --white:#eaf4ff; --theme-accent:#c13a49; --theme-bg:#b8dcff; --theme-ink:#173d78; --theme-tertiary:#173b78; }
+:root[data-theme="sorcerer"] .brand-mark { background:#173b78; color:#f4ca35; }
+:root[data-theme="sorcerer"] .brand span { color:#173b78; }
+:root[data-theme="sorcerer"] .brand small { color:#173b78; }
+:root[data-theme="sorcerer"] .nav-item.selected { background:#c13a49; color:#fff; box-shadow:inset 3px 0 #f4ca35; }
+:root[data-theme="sorcerer"] .nav-item.selected svg { color:#f4ca35; }
+:root[data-theme="sorcerer"] .nav-count { background:#dbeafe; color:#173b78; }
+:root[data-theme="sorcerer"] .sidebar-tip button,
+:root[data-theme="sorcerer"] .breadcrumb strong,
+:root[data-theme="sorcerer"] .panel h2,
+:root[data-theme="sorcerer"] .panel h3,
+:root[data-theme="sorcerer"] .section-heading h2,
+:root[data-theme="sorcerer"] .welcome-copy h1 em { color:#173b78; }
+:root[data-theme="sorcerer"] .button-primary { background:#c13a49; border-color:#c13a49; color:#fff; }
+:root[data-theme="sorcerer"] .button-gold { background:#f4ca35; border-color:#f4ca35; color:#173d78; }
+:root[data-theme="sorcerer"] .button-gold:hover { background:#e5b91f; border-color:#e5b91f; }
+:root[data-theme="sorcerer"] .button-primary:hover { background:#9f2b39; border-color:#9f2b39; }
+:root[data-theme="sorcerer"] .button-secondary { color:#173b78; border-color:#7eafe8; }
+:root[data-theme="sorcerer"] .button-secondary:hover { background:#dbeafe; border-color:#173b78; }
+:root[data-theme="sorcerer"] .chip.active { background:#c13a49; border-color:#c13a49; color:#fff; }
+:root[data-theme="sorcerer"] .nav-item:nth-child(3n) svg,
+:root[data-theme="sorcerer"] .catalog-set-mark { color:#173b78; }
+:root[data-theme="sorcerer"] .theme-check { color:#c13a49; }
+
+/* Sort/filter controls and authenticity labels. */
+.toolbar-select, .catalog-control-row label, .catalog-refine-row label { display:inline-flex; align-items:center; gap:7px; color:var(--muted); font-size:12px; font-weight:650; }
+.toolbar-select select, .catalog-control-row select, .catalog-refine-row select { min-height:38px; max-width:100%; border:1px solid var(--line); border-radius:9px; padding:8px 10px; background:var(--white); color:var(--theme-ink, #18243a); font:inherit; font-size:12px; }
+.catalog-control-row, .catalog-refine-row { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:12px 0 18px; }
+.catalog-refine-row { justify-content:space-between; }
+.catalog-result-count, .catalog-refine-row > span { color:var(--muted); font-size:12px; margin-left:auto; }
+.authenticity-badge { display:inline-flex; width:fit-content; max-width:100%; align-items:center; border-radius:999px; padding:4px 7px; font-size:9px; font-weight:750; line-height:1.35; text-transform:capitalize; border:1px solid #d7dce3; background:#f1f3f5; color:#596273; }
+.authenticity-verified_authentic { background:#e9f7ef; border-color:#b7e4c7; color:#21683b; }
+.authenticity-suspected_counterfeit { background:#fff2d9; border-color:#f1d39a; color:#825411; }
+.authenticity-confirmed_counterfeit { background:#ffebeb; border-color:#f1b7b7; color:#a32727; }
+.pin-card-body > .authenticity-badge { margin-top:7px; }
+.catalog-pin-info > .authenticity-badge { margin-top:2px; }
+.friends-pin-copy > .authenticity-badge { margin-top:2px; }
+@media (max-width:560px) { .catalog-control-row, .catalog-refine-row { align-items:stretch; flex-direction:column; } .catalog-control-row label, .catalog-refine-row label { justify-content:space-between; } .catalog-control-row select, .catalog-refine-row select { flex:1; } .toolbar-select { width:100%; } .toolbar-select select { flex:1; } }

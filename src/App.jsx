@@ -29,6 +29,8 @@ useEffect(() => {
   try {
     const textSize = localStorage.getItem("pinfolio-text-size") || "medium";
     const cardSize = localStorage.getItem("pinfolio-card-size") || localStorage.getItem("pinfolio-pin-image-size") || "medium";
+    const theme = localStorage.getItem("pinfolio-color-theme") || "classic";
+    document.documentElement.dataset.theme = ["classic","ocean","rose","forest","lavender","sunset","midnight","mint","cherry","slate","storybook","sorcerer"].includes(theme) ? theme : "classic";
     document.documentElement.dataset.textSize = ["small", "medium", "large"].includes(textSize) ? textSize : "medium";
     document.documentElement.dataset.cardSize = ["small", "medium", "large"].includes(cardSize) ? cardSize : "medium";
   } catch { /* Defaults are supplied by CSS. */ }
@@ -229,6 +231,7 @@ useEffect(() => {
       .from("collection_items")
       .select(`
         id,
+        created_at,
         owned_quantity,
         tradeable_quantity,
         purchase_cost,
@@ -273,6 +276,7 @@ useEffect(() => {
       return {
         id: item.pin.id,
         collectionItemId: item.id,
+        createdAt: item.created_at,
         name: item.pin.name,
         set: item.pin.pin_set?.name || item.pin.franchise || item.pin.park || "Uncategorized",
         character: item.pin.character_name || "Unknown character",
