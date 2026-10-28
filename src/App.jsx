@@ -10,7 +10,7 @@ import { supabase, isDemoMode } from "./lib/supabase";
 import { Dashboard, Collection, Traders, Wishlist, MorePage } from "./components/AppViews.jsx";
 import Catalog from "./components/Catalog.jsx";
 import Friends from "./components/Friends.jsx";
-import { PinDetail, AddPinForm, AddWishlistForm, EditWishlistForm, EditCollectionForm, AuthScreen } from "./forms/PinForms.jsx";
+import { PinDetail, AddPinForm, AddWishlistForm, EditWishlistForm, EditCollectionForm, AuthScreen, PasswordRecoveryScreen } from "./forms/PinForms.jsx";
 
 const navItems = [
   { id: "Dashboard", icon: LayoutDashboard },
@@ -36,6 +36,7 @@ useEffect(() => {
 
 const [session, setSession] = useState(null);
 const [authReady, setAuthReady] = useState(false);
+const [passwordRecovery, setPasswordRecovery] = useState(() => typeof window !== "undefined" && window.location.hash.includes("type=recovery"));
 const [tradeProposalCount, setTradeProposalCount] = useState(0);
 
 const [page, setPage] = useState("Dashboard");
@@ -121,8 +122,9 @@ useEffect(() => {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      if (event === "PASSWORD_RECOVERY") setPasswordRecovery(true);
     });
 
     return () => subscription.unsubscribe();
@@ -335,6 +337,10 @@ useEffect(() => {
     return <p style={{ padding: 24 }}>Loading Pinfolio...</p>;
   }
   
+  if (passwordRecovery && session) {
+    return <PasswordRecoveryScreen onComplete={() => setPasswordRecovery(false)} />;
+  }
+
   if (!session) {
     return <AuthScreen />;
   }

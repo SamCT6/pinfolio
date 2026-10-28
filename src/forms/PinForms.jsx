@@ -4,7 +4,7 @@ import {
   Search, Bell, Plus, ChevronRight, ArrowUpRight, LockKeyhole,
   SlidersHorizontal, Sparkles, ShieldCheck, Menu, X, CircleHelp,
   Settings, Layers3, ChartNoAxesCombined, ImagePlus, EyeOff, Clock3,
-  CheckCircle2, Handshake, ArrowRightLeft
+  CheckCircle2, Handshake, ArrowRightLeft, Eye
 } from "lucide-react";
 import { supabase, isDemoMode } from "../lib/supabase";
 
@@ -1471,6 +1471,7 @@ export function AuthScreen() {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -1484,27 +1485,15 @@ export function AuthScreen() {
     }
 
     setLoading(true);
-
     try {
       if (mode === "signup") {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-        });
-
+        const { data, error } = await supabase.auth.signUp({ email, password });
         if (error) throw error;
-
-        setMessage(
-          data.session
-            ? "Account created! You're signed in."
-            : "Account created! Check your email for a confirmation link."
-        );
+        setMessage(data.session
+          ? "Account created! You're signed in."
+          : "Account created! Check your email for a confirmation link.");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
       }
     } catch (error) {
@@ -1514,125 +1503,132 @@ export function AuthScreen() {
     }
   }
 
+  async function handleResetPassword() {
+    setMessage("");
+    if (!supabase) {
+      setMessage("Supabase is not configured.");
+      return;
+    }
+    if (!email.trim()) {
+      setMessage("Enter your email address above first, then choose Forgot password.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const redirectTo = `${window.location.origin}${window.location.pathname}`;
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+      if (error) throw error;
+      setMessage("If an account exists for that email, a password-reset link has been sent. Check your inbox and spam folder.");
+    } catch (error) {
+      setMessage(error.message || "Couldn't send the password-reset email.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div style={{
-      minHeight: "100vh",
-      display: "grid",
-      placeItems: "center",
-      padding: 24,
-      background: "#101a30",
-      color: "#f8f2e5",
-      fontFamily: "inherit"
-    }}>
-      <form
-        onSubmit={handleSubmit}
-        style={{
-          width: "100%",
-          maxWidth: 400,
-          boxSizing: "border-box",
-          padding: 32,
-          borderRadius: 20,
-          background: "#1a2740",
-          border: "1px solid #35415a"
-        }}
-      >
-        <div style={{
-          color: "#e7c779",
-          fontSize: 14,
-          letterSpacing: 3,
-          marginBottom: 12
-        }}>
-          ✦ PINFOLIO
-        </div>
-
-        <h1 style={{ marginBottom: 8 }}>
-          {mode === "login" ? "Welcome back" : "Create your account"}
-        </h1>
-
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#101a30", color: "#f8f2e5", fontFamily: "inherit" }}>
+      <form onSubmit={handleSubmit} style={{ width: "100%", maxWidth: 400, boxSizing: "border-box", padding: 32, borderRadius: 20, background: "#1a2740", border: "1px solid #35415a" }}>
+        <div style={{ color: "#e7c779", fontSize: 14, letterSpacing: 3, marginBottom: 12 }}>✦ PINFOLIO</div>
+        <h1 style={{ marginBottom: 8 }}>{mode === "login" ? "Welcome back" : "Create your account"}</h1>
         <p style={{ color: "#b8c0cf", lineHeight: 1.5 }}>
-          {mode === "login"
-            ? "Sign in to access your pin collection."
-            : "Start organizing your collection and wishlist."}
+          {mode === "login" ? "Sign in to access your pin collection." : "Start organizing your collection and wishlist."}
         </p>
 
         <label style={{ display: "block", marginTop: 24 }}>
           Email address
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            required
-            style={authInputStyle}
-          />
+          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required style={authInputStyle} />
         </label>
 
         <label style={{ display: "block", marginTop: 16 }}>
           Password
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-            minLength={8}
-            required
-            style={authInputStyle}
-          />
+          <span style={{ display: "block", position: "relative", marginTop: 8 }}>
+            <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={8} required style={{ ...authInputStyle, marginTop: 0, paddingRight: 48 }} />
+            <button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"} title={showPassword ? "Hide password" : "Show password"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", color: "#b8c0cf", padding: 8, display: "grid", placeItems: "center", cursor: "pointer" }}>
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </span>
         </label>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            width: "100%",
-            marginTop: 24,
-            padding: 13,
-            border: 0,
-            borderRadius: 10,
-            background: "#e7c779",
-            color: "#172039",
-            fontWeight: 700,
-            cursor: loading ? "wait" : "pointer"
-          }}
-        >
-          {loading
-            ? "Please wait..."
-            : mode === "login"
-              ? "Sign in"
-              : "Create account"}
-        </button>
-
-        {message && (
-          <p role="status" style={{
-            marginTop: 16,
-            color: "#f8f2e5",
-            overflowWrap: "anywhere"
-          }}>
-            {message}
-          </p>
+        {mode === "login" && (
+          <button type="button" onClick={handleResetPassword} disabled={loading} style={{ display: "block", marginTop: 12, padding: 0, border: 0, background: "transparent", color: "#e7c779", textDecoration: "underline", cursor: loading ? "wait" : "pointer", font: "inherit", fontSize: 14 }}>
+            Forgot password?
+          </button>
         )}
 
-        <button
-          type="button"
-          onClick={() => {
-            setMode(mode === "login" ? "signup" : "login");
-            setMessage("");
-          }}
-          style={{
-            width: "100%",
-            marginTop: 16,
-            padding: 10,
-            border: "1px solid #53617a",
-            borderRadius: 10,
-            background: "transparent",
-            color: "#f8f2e5",
-            cursor: "pointer"
-          }}
-        >
-          {mode === "login"
-            ? "Need an account? Sign up"
-            : "Already have an account? Sign in"}
+        <button type="submit" disabled={loading} style={{ width: "100%", marginTop: 24, padding: 13, border: 0, borderRadius: 10, background: "#e7c779", color: "#172039", fontWeight: 700, cursor: loading ? "wait" : "pointer" }}>
+          {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"}
         </button>
+
+        {message && <p role="status" aria-live="polite" style={{ marginTop: 16, color: "#f8f2e5", overflowWrap: "anywhere", lineHeight: 1.5 }}>{message}</p>}
+
+        <button type="button" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setMessage(""); setPassword(""); setShowPassword(false); }} style={{ width: "100%", marginTop: 16, padding: 10, border: "1px solid #53617a", borderRadius: 10, background: "transparent", color: "#f8f2e5", cursor: "pointer" }}>
+          {mode === "login" ? "Need an account? Sign up" : "Already have an account? Sign in"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+export function PasswordRecoveryScreen({ onComplete }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setMessage("");
+    if (password.length < 8) {
+      setMessage("Your new password must be at least 8 characters long.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setMessage("The passwords don't match. Please check them and try again.");
+      return;
+    }
+    if (!supabase) {
+      setMessage("Supabase is not configured.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) throw error;
+      setMessage("Your password has been updated. Taking you back to Pinfolio...");
+      window.setTimeout(() => {
+        window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
+        onComplete?.();
+      }, 900);
+    } catch (error) {
+      setMessage(error.message || "Couldn't update your password. Please request a new reset link and try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#101a30", color: "#f8f2e5", fontFamily: "inherit" }}>
+      <form onSubmit={handleSubmit} style={{ width: "100%", maxWidth: 400, boxSizing: "border-box", padding: 32, borderRadius: 20, background: "#1a2740", border: "1px solid #35415a" }}>
+        <div style={{ color: "#e7c779", fontSize: 14, letterSpacing: 3, marginBottom: 12 }}>✦ PINFOLIO</div>
+        <h1 style={{ marginBottom: 8 }}>Choose a new password</h1>
+        <p style={{ color: "#b8c0cf", lineHeight: 1.5 }}>Use at least 8 characters. Your new password will replace the old one.</p>
+        <label style={{ display: "block", marginTop: 24 }}>New password
+          <span style={{ display: "block", position: "relative", marginTop: 8 }}>
+            <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required style={{ ...authInputStyle, marginTop: 0, paddingRight: 48 }} />
+            <button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", color: "#b8c0cf", padding: 8, display: "grid", placeItems: "center", cursor: "pointer" }}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+          </span>
+        </label>
+        <label style={{ display: "block", marginTop: 16 }}>Confirm new password
+          <span style={{ display: "block", position: "relative", marginTop: 8 }}>
+            <input type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" minLength={8} required style={{ ...authInputStyle, marginTop: 0, paddingRight: 48 }} />
+            <button type="button" onClick={() => setShowConfirmPassword((visible) => !visible)} aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", color: "#b8c0cf", padding: 8, display: "grid", placeItems: "center", cursor: "pointer" }}>{showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+          </span>
+        </label>
+        <button type="submit" disabled={loading} style={{ width: "100%", marginTop: 24, padding: 13, border: 0, borderRadius: 10, background: "#e7c779", color: "#172039", fontWeight: 700, cursor: loading ? "wait" : "pointer" }}>{loading ? "Updating password..." : "Update password"}</button>
+        {message && <p role="status" aria-live="polite" style={{ marginTop: 16, color: "#f8f2e5", overflowWrap: "anywhere", lineHeight: 1.5 }}>{message}</p>}
       </form>
     </div>
   );
@@ -1650,5 +1646,3 @@ export const authInputStyle = {
   color: "#ffffff",
   fontSize: 16
 };
-
-
