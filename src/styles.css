@@ -962,3 +962,18 @@ button:focus-visible, input:focus-visible { outline: 3px solid #d7b66a; outline-
 .exchange-row-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
 .exchange-row-fields label { min-width: 0; }
 @media (max-width: 600px) { .multi-trade-modal { width: calc(100vw - 16px); padding: 16px; } .offer-pin-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Counteroffer pin picker: keep card content visible and prevent collapsed blank rows. */
+.offer-pin-card-grid { align-items: stretch; }
+.offer-pin-card { min-height: 180px; }
+.offer-pin-card-select { min-height: 160px; height: auto; box-sizing: border-box; }
+.offer-pin-card-image { display: block; width: 100%; min-height: 100px; flex: 0 0 100px; }
+.offer-pin-card-image .pin-art { display: block; width: 100%; height: 100%; min-height: 100px; }
+.offer-pin-card strong, .offer-pin-card span { display: block; color: var(--text, #18263e); }
+.offer-pin-empty { grid-column: 1 / -1; padding: 14px; border: 1px dashed var(--border, #d7d5d0); border-radius: 12px; }
+@media (max-width: 600px) {
+  .offer-pin-card { min-height: 150px; }
+  .offer-pin-card-select { min-height: 140px; padding: 8px; }
+  .offer-pin-card-image { flex-basis: 90px; min-height: 90px; }
+  .offer-pin-card-image .pin-art { min-height: 90px; }
+}
