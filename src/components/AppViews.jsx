@@ -241,6 +241,11 @@ export function Traders() {
   const [notice, setNotice] = useState("");
   const [offerListing, setOfferListing] = useState(null);
   const [offerPinId, setOfferPinId] = useState("");
+  const [offerSelections, setOfferSelections] = useState([]);
+  const [requestSelections, setRequestSelections] = useState([]);
+  const [exchangeGivenItems, setExchangeGivenItems] = useState([]);
+  const [exchangeReceivedItems, setExchangeReceivedItems] = useState([]);
+  const [offerPinView, setOfferPinView] = useState("collection");
   const [offerQuantity, setOfferQuantity] = useState("1");
   const [requestQuantity, setRequestQuantity] = useState("1");
   const [offerMessage, setOfferMessage] = useState("");
@@ -249,6 +254,18 @@ export function Traders() {
   const [wishlistMatches, setWishlistMatches] = useState([]);
   const [notificationItems, setNotificationItems] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [outsideExchangeOpen, setOutsideExchangeOpen] = useState(false);
+  const [exchangeGivenId, setExchangeGivenId] = useState("");
+  const [exchangeGivenQty, setExchangeGivenQty] = useState("1");
+  const [exchangeReceivedMode, setExchangeReceivedMode] = useState("existing");
+  const [exchangeReceivedId, setExchangeReceivedId] = useState("");
+  const [exchangeNewName, setExchangeNewName] = useState("");
+  const [exchangeNewSet, setExchangeNewSet] = useState("");
+  const [exchangeNewCharacter, setExchangeNewCharacter] = useState("");
+  const [exchangeNewImage, setExchangeNewImage] = useState("");
+  const [exchangeReceivedQty, setExchangeReceivedQty] = useState("1");
+  const [savingExchange, setSavingExchange] = useState(false);
+  const [catalogPins, setCatalogPins] = useState([]);
 
   async function loadTraderData() {
     if (!supabase || isDemoMode) {
@@ -271,11 +288,11 @@ export function Traders() {
           .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
           .order("created_at", { ascending: false }),
         supabase.from("collection_items")
-          .select("id,pin_id,owned_quantity,tradeable_quantity,pin:pins(id,name,franchise,park,image_url)")
+          .select("id,pin_id,owned_quantity,tradeable_quantity,pin:pins(id,name,franchise,park,image_url,image_path,character_name)")
           .eq("user_id", user.id)
-          .gt("tradeable_quantity", 0),
+          .gt("owned_quantity", 0),
         supabase.from("trades")
-          .select("id,proposer_id,recipient_id,status,message,created_at,updated_at,proposer_confirmed,recipient_confirmed,trade_items(id,owner_id,pin_id,quantity,item_type,pin:pins(name))")
+          .select("id,proposer_id,recipient_id,status,message,created_at,updated_at,proposer_confirmed,recipient_confirmed,trade_items(id,owner_id,pin_id,quantity,item_type,pin:pins(id,name,franchise,park,image_url,image_path,character_name,release_year))")
           .or(`proposer_id.eq.${user.id},recipient_id.eq.${user.id}`)
           .order("created_at", { ascending: false }),
       ]);
@@ -285,16 +302,49 @@ export function Traders() {
 
       const requests = requestResult.data || [];
       setFriendRequests(requests);
-      setMyPins((ownPinsResult.data || []).filter(row => row.pin).map(row => ({
-        id: row.pin_id, collectionItemId: row.id, name: row.pin.name,
-        set: row.pin.franchise || row.pin.park || "Uncategorized",
-        owned: row.owned_quantity, tradeable: row.tradeable_quantity,
+      const resolvedMyPins = await Promise.all((ownPinsResult.data || []).filter(row => row.pin).map(async row => {
+        let imageUrl = row.pin.image_url || null;
+        if (row.pin.image_path) {
+          const { data: signed, error: signedError } = await supabase.storage.from("pin-images").createSignedUrl(row.pin.image_path, 60 * 60);
+          if (!signedError && signed?.signedUrl) imageUrl = signed.signedUrl;
+        }
+        return {
+          id: row.pin_id, collectionItemId: row.id, name: row.pin.name,
+          imageUrl, character: row.pin.character_name || "",
+          set: row.pin.franchise || row.pin.park || "Uncategorized",
+          owned: row.owned_quantity, tradeable: row.tradeable_quantity,
+        };
+      }));
+      setMyPins(resolvedMyPins);
+      const resolvedTrades = await Promise.all((tradeResult.data || []).map(async trade => ({
+        ...trade,
+        trade_items: await Promise.all((trade.trade_items || []).map(async item => {
+          if (!item.pin) return item;
+          let image_url = item.pin.image_url || null;
+          if (item.pin.image_path) {
+            const { data: signed, error: signedError } = await supabase.storage.from("pin-images").createSignedUrl(item.pin.image_path, 60 * 60);
+            if (!signedError && signed?.signedUrl) image_url = signed.signedUrl;
+          }
+          return { ...item, pin: { ...item.pin, image_url } };
+        }))
       })));
-      setIncomingTrades(tradeResult.data || []);
-      const [matchesResult, notificationsResult] = await Promise.all([
+      setIncomingTrades(resolvedTrades);
+      const [matchesResult, notificationsResult, catalogResult] = await Promise.all([
         supabase.rpc("get_friend_wishlist_matches"),
         supabase.from("notifications").select("id,kind,title,body,created_at,read_at").eq("user_id", user.id).order("created_at", { ascending: false }).limit(20),
+        supabase.from("pins").select("id,name,franchise,park,image_url,image_path,character_name").order("name").limit(5000),
       ]);
+      if (!catalogResult.error) {
+        const resolvedCatalog = await Promise.all((catalogResult.data || []).map(async pin => {
+          let imageUrl = pin.image_url || null;
+          if (pin.image_path) {
+            const { data: signed, error: signedError } = await supabase.storage.from("pin-images").createSignedUrl(pin.image_path, 60 * 60);
+            if (!signedError && signed?.signedUrl) imageUrl = signed.signedUrl;
+          }
+          return { ...pin, imageUrl };
+        }));
+        setCatalogPins(resolvedCatalog);
+      }
       if (!matchesResult.error) setWishlistMatches(matchesResult.data || []);
       if (!notificationsResult.error) setNotificationItems(notificationsResult.data || []);
 
@@ -399,30 +449,55 @@ export function Traders() {
 
   async function createOffer(event) {
     event.preventDefault();
-    if (!offerListing || !offerPinId) return;
+    const offeredItems = offerSelections.filter(item => Number(item.quantity) > 0);
+    const requestedItems = requestSelections.filter(item => Number(item.quantity) > 0);
+    if (!offerListing || !offeredItems.length || !requestedItems.length) {
+      setError("Choose at least one pin to offer and one pin to request."); return;
+    }
     setSavingOffer(true); setError(""); setNotice("");
-    const rpcName = counterTradeId ? "counteroffer_trade" : "create_trade_proposal";
+    const rpcName = counterTradeId ? "counteroffer_trade_multi" : "create_trade_proposal_multi";
     const rpcArgs = counterTradeId ? {
-      p_trade_id: counterTradeId,
-      p_offer_pin_id: offerPinId,
-      p_offer_quantity: Number(offerQuantity),
-      p_request_pin_id: offerListing.pinId,
-      p_request_quantity: Number(requestQuantity),
+      p_trade_id: counterTradeId, p_offered_items: offeredItems, p_requested_items: requestedItems,
       p_message: offerMessage.trim() || "Counteroffer",
     } : {
-      p_recipient_id: offerListing.ownerId,
-      p_offer_pin_id: offerPinId,
-      p_offer_quantity: Number(offerQuantity),
-      p_request_pin_id: offerListing.pinId,
-      p_request_quantity: Number(requestQuantity),
+      p_recipient_id: offerListing.ownerId, p_offered_items: offeredItems, p_requested_items: requestedItems,
       p_message: offerMessage.trim() || null,
     };
     const { error: offerError } = await supabase.rpc(rpcName, rpcArgs);
     setSavingOffer(false);
     if (offerError) { setError(offerError.message); return; }
-    setNotice(counterTradeId ? "Counteroffer sent. The previous proposal was closed and your new offer is awaiting a response." : "Trade proposal sent. The other trader must accept it before either person confirms completion.");
-    setOfferListing(null); setCounterTradeId(null); setOfferPinId(""); setOfferMessage(""); setCounterTradeId(null);
+    setNotice(counterTradeId ? "Multi-pin counteroffer sent." : "Multi-pin trade proposal sent. The other trader must accept it before either person confirms completion.");
+    setOfferListing(null); setCounterTradeId(null); setOfferPinId(""); setOfferSelections([]); setRequestSelections([]); setOfferMessage("");
     await loadTraderData();
+  }
+
+  function toggleTradeSelection(setter, selections, pinId, defaultQuantity = 1) {
+    setter(selections.some(item => String(item.pin_id) === String(pinId))
+      ? selections.filter(item => String(item.pin_id) !== String(pinId))
+      : [...selections, { pin_id: pinId, quantity: defaultQuantity }]);
+  }
+
+  function updateTradeSelectionQuantity(setter, selections, pinId, quantity) {
+    setter(selections.map(item => String(item.pin_id) === String(pinId) ? { ...item, quantity: Number(quantity) } : item));
+  }
+
+  async function recordOutsideExchange(event) {
+    event.preventDefault();
+    const givenItems = exchangeGivenItems.filter(item => item.pin_id && Number(item.quantity) > 0);
+    const receivedItems = exchangeReceivedItems.filter(item => (item.mode === "new" ? item.name?.trim() : item.pin_id) && Number(item.quantity) > 0);
+    if (!givenItems.length || !receivedItems.length) { setError("Add at least one pin you gave and one pin you received."); return; }
+    setSavingExchange(true); setError(""); setNotice("");
+    try {
+      const { error: exchangeError } = await supabase.rpc("record_outside_pin_exchange_multi", {
+        p_given_items: givenItems.map(item => ({ pin_id: item.pin_id, quantity: Number(item.quantity) })),
+        p_received_items: receivedItems.map(item => item.mode === "new" ? ({ quantity: Number(item.quantity), new_pin: { name: item.name.trim(), franchise: item.franchise?.trim() || null, character_name: item.character_name?.trim() || null, image_url: item.image_url?.trim() || null } }) : ({ pin_id: item.pin_id, quantity: Number(item.quantity) }))
+      });
+      if (exchangeError) throw exchangeError;
+      setNotice("Multi-pin exchange recorded. Your collection has been updated."); setOutsideExchangeOpen(false);
+      setExchangeGivenItems([]); setExchangeReceivedItems([]);
+      await loadTraderData();
+    } catch (exchangeError) { setError(exchangeError.message || "Could not record this exchange."); }
+    finally { setSavingExchange(false); }
   }
 
   async function respondToTrade(tradeId, response) {
@@ -480,15 +555,26 @@ export function Traders() {
         {loading ? <p>Loading friends…</p> : friends.length === 0 ? <p>Once someone accepts your friend request, their shared trader pins will appear here.</p> : <div className="friend-strip">{friends.map(friend => <div className="friend-chip" key={friend.id}><div className="avatar">{friend.avatar_url ? <img src={friend.avatar_url} alt="" /> : (friend.display_name || friend.username || "P").slice(0,1).toUpperCase()}</div><div><strong>{friend.display_name || friend.username}</strong><span>@{friend.username}</span></div></div>)}</div>}
       </section>
 
+      <section className="panel" style={{ marginTop: 20 }}>
+        <div className="panel-heading"><div><h2>Exchange outside Pinfolio</h2><p>Record an in-person trade, gift, or exchange without needing the other person's account.</p></div><ArrowRightLeft size={20} /></div>
+        <button className="button button-primary" onClick={() => { setOutsideExchangeOpen(true); setExchangeGivenItems([{ pin_id: myPins[0]?.id || "", quantity: 1 }]); setExchangeReceivedItems([{ mode: "existing", pin_id: "", quantity: 1, name: "", franchise: "", character_name: "", image_url: "" }]); }}>Record an exchange</button>
+      </section>
+
       <div className="trader-heading"><h2>Available to trade</h2><span className="subtle-count">Shared by your friends</span></div>
-      {loading ? <p>Loading shared pins…</p> : traderPins.length === 0 ? <div className="empty-state"><h3>No shared pins yet</h3><p>Ask a friend to set one of their collection pins to “Friends” or “Public” visibility and mark at least one copy tradeable.</p></div> : <div className="pin-grid">{traderPins.map(listing => <article className="pin-card trader-card" key={listing.id}><div className="pin-image-button"><PinArt pin={{ name: listing.name, imageUrl: listing.imageUrl }} /><span className="trade-badge">Tradeable ×{listing.quantity}</span></div><div className="pin-card-body"><div className="pin-card-title">{listing.name}</div><div className="pin-card-subtitle">{listing.set}</div><div className="owner-row"><div className="avatar avatar-small">{listing.owner?.avatar_url ? <img src={listing.owner.avatar_url} alt="" /> : (listing.owner?.display_name || listing.owner?.username || "P").slice(0,1).toUpperCase()}</div><span>@{listing.owner?.username || "trader"}</span></div><button className="button button-secondary button-wide" onClick={() => { setOfferListing(listing); setOfferPinId(myPins[0]?.id || ""); setOfferQuantity("1"); setRequestQuantity("1"); setOfferMessage(""); }}>Propose trade <ArrowRightLeft size={15} /></button></div></article>)}</div>}
+      {loading ? <p>Loading shared pins…</p> : traderPins.length === 0 ? <div className="empty-state"><h3>No shared pins yet</h3><p>Ask a friend to set one of their collection pins to “Friends” or “Public” visibility and mark at least one copy tradeable.</p></div> : <div className="pin-grid">{traderPins.map(listing => <article className="pin-card trader-card" key={listing.id}><div className="pin-image-button"><PinArt pin={{ name: listing.name, imageUrl: listing.imageUrl }} /><span className="trade-badge">Tradeable ×{listing.quantity}</span></div><div className="pin-card-body"><div className="pin-card-title">{listing.name}</div><div className="pin-card-subtitle">{listing.set}</div><div className="owner-row"><div className="avatar avatar-small">{listing.owner?.avatar_url ? <img src={listing.owner.avatar_url} alt="" /> : (listing.owner?.display_name || listing.owner?.username || "P").slice(0,1).toUpperCase()}</div><span>@{listing.owner?.username || "trader"}</span></div><button className="button button-secondary button-wide" onClick={() => { setOfferListing(listing); setOfferPinView("collection"); setOfferPinId(""); setOfferSelections([]); setRequestSelections([{ pin_id: listing.pinId, quantity: 1 }]); setOfferQuantity("1"); setRequestQuantity("1"); setOfferMessage(""); }}>Propose trade <ArrowRightLeft size={15} /></button></div></article>)}</div>}
 
       <section className="panel" style={{ marginTop: 24 }}>
         <div className="panel-heading"><div><h2>Trade history</h2><p>Active proposals and completed or declined trades.</p></div><ArrowRightLeft size={20} /></div>
-        {loading ? <p>Loading trades…</p> : incomingTrades.length === 0 ? <p>No active trade proposals.</p> : <div className="recent-list">{incomingTrades.map(trade => <div className="recent-row trade-request-row" key={trade.id}><div className="recent-copy"><strong>{trade.proposer_id === currentUserId ? "Trade you proposed" : "Incoming trade"}</strong><span>{trade.message || "No message included."}</span><span className="subtle-count">{new Date(trade.created_at).toLocaleString()}</span><span className="subtle-count">{trade.status === "pending" ? (trade.recipient_id === currentUserId ? "Waiting for your response" : "Waiting for recipient") : `Your confirmation: ${(trade.proposer_id === currentUserId ? trade.proposer_confirmed : trade.recipient_confirmed) ? "confirmed" : "not yet confirmed"}`}</span>{(trade.trade_items || []).map(item => <span className="subtle-count" key={item.id}>{item.item_type === "offered" ? "Offered" : "Requested"}: {item.pin?.name || "Pin"} ×{item.quantity}</span>)}</div>{trade.status === "pending" && trade.recipient_id === currentUserId ? <><button className="button button-primary" onClick={() => respondToTrade(trade.id, "accepted")}>Accept</button><button className="button button-secondary" onClick={() => respondToTrade(trade.id, "declined")}>Decline</button><button className="button button-secondary" onClick={() => { const offered = (trade.trade_items || []).find(i => i.item_type === "offered"); if (!offered) return; setCounterTradeId(trade.id); setOfferListing({ ownerId: trade.proposer_id, pinId: offered.pin_id, name: offered.pin?.name || "their pin", quantity: offered.quantity, owner: { username: "trader" } }); setOfferPinId(myPins[0]?.id || ""); setOfferQuantity("1"); setRequestQuantity(String(offered.quantity)); setOfferMessage("Counteroffer"); }}>Counteroffer</button></> : trade.status === "accepted" ? <button className="button button-primary" disabled={trade.proposer_id === currentUserId ? trade.proposer_confirmed : trade.recipient_confirmed} onClick={() => confirmTrade(trade.id)}>{(trade.proposer_id === currentUserId ? trade.proposer_confirmed : trade.recipient_confirmed) ? "Confirmed" : "Confirm completion"}</button> : <span className="trade-status-label">{trade.status}</span>}</div>)}</div>}
+        {loading ? <p>Loading trades…</p> : incomingTrades.length === 0 ? <p>No active trade proposals.</p> : <div className="recent-list">{incomingTrades.map(trade => <div className="recent-row trade-request-row" key={trade.id}><div className="recent-copy"><strong>{trade.proposer_id === currentUserId ? "Trade you proposed" : "Incoming trade"}</strong><span>{trade.message || "No message included."}</span><span className="subtle-count">{new Date(trade.created_at).toLocaleString()}</span><span className="subtle-count">{trade.status === "pending" ? (trade.recipient_id === currentUserId ? "Waiting for your response" : "Waiting for recipient") : `Your confirmation: ${(trade.proposer_id === currentUserId ? trade.proposer_confirmed : trade.recipient_confirmed) ? "confirmed" : "not yet confirmed"}`}</span><div className="trade-item-card-grid">{(trade.trade_items || []).map(item => <article className="trade-item-card" key={item.id}><div className="trade-item-image"><PinArt pin={{name:item.pin?.name || "Pin", imageUrl:item.pin?.image_url || null}} small /></div><div className="trade-item-copy"><span className="trade-item-type">{item.item_type === "offered" ? "OFFERED" : "REQUESTED"}</span><strong>{item.pin?.name || "Pin"}</strong><span>{item.pin?.franchise || item.pin?.park || "Pin collection"}</span><span>Quantity ×{item.quantity}</span></div></article>)}</div></div>{trade.status === "pending" && trade.recipient_id === currentUserId ? <><button className="button button-primary" onClick={() => respondToTrade(trade.id, "accepted")}>Accept</button><button className="button button-secondary" onClick={() => respondToTrade(trade.id, "declined")}>Decline</button><button className="button button-secondary" onClick={() => { const offered = (trade.trade_items || []).find(i => i.item_type === "offered"); if (!offered) return; setCounterTradeId(trade.id); setOfferPinView("collection"); const otherId = trade.proposer_id === currentUserId ? trade.recipient_id : trade.proposer_id; const firstRequested = (trade.trade_items || []).find(i => i.item_type === "offered" && i.owner_id === otherId); setOfferListing({ ownerId: otherId, pinId: firstRequested?.pin_id || offered.pin_id, name: firstRequested?.pin?.name || offered.pin?.name || "their pin", quantity: firstRequested?.quantity || offered.quantity, owner: { username: "trader" } }); setOfferPinId(""); setOfferSelections([]); setRequestSelections([]); setOfferQuantity("1"); setRequestQuantity("1"); setOfferMessage("Counteroffer"); }}>Counteroffer</button></> : trade.status === "accepted" ? <button className="button button-primary" disabled={trade.proposer_id === currentUserId ? trade.proposer_confirmed : trade.recipient_confirmed} onClick={() => confirmTrade(trade.id)}>{(trade.proposer_id === currentUserId ? trade.proposer_confirmed : trade.recipient_confirmed) ? "Confirmed" : "Confirm completion"}</button> : <span className="trade-status-label">{trade.status}</span>}</div>)}</div>}
       </section>
 
-      {offerListing && <div className="modal-backdrop" onClick={() => { setOfferListing(null); setCounterTradeId(null); }}><div className="modal" role="dialog" aria-modal="true" aria-labelledby="offer-trade-title" onClick={e => e.stopPropagation()}><div className="modal-header"><div><span className="eyebrow">TRADE PROPOSAL</span><h2 id="offer-trade-title">{counterTradeId ? "Make a counteroffer" : "Offer a trade"}</h2><p>Requesting {offerListing.name} from @{offerListing.owner?.username || "your friend"}</p></div><button className="icon-button" type="button" onClick={() => { setOfferListing(null); setCounterTradeId(null); }} aria-label="Close">×</button></div><form onSubmit={createOffer}><label htmlFor="offer-pin-select">Your tradeable pin</label><select id="offer-pin-select" value={offerPinId} onChange={e => setOfferPinId(e.target.value)} required><option value="">Choose a pin to offer</option>{myPins.map(pin => <option key={pin.id} value={pin.id}>{pin.name} — {pin.tradeable} tradeable</option>)}</select>{myPins.length === 0 && <p>You need at least one tradeable pin in your collection.</p>}<label htmlFor="offer-quantity">Copies you offer</label><input id="offer-quantity" type="number" min="1" max={myPins.find(p => p.id === offerPinId)?.tradeable || 1} value={offerQuantity} onChange={e => setOfferQuantity(e.target.value)} required /><label htmlFor="request-quantity">Copies you want</label><input id="request-quantity" type="number" min="1" max={offerListing.quantity} value={requestQuantity} onChange={e => setRequestQuantity(e.target.value)} required /><label htmlFor="offer-message">Message (optional)</label><textarea id="offer-message" value={offerMessage} onChange={e => setOfferMessage(e.target.value)} rows={3} maxLength={500} placeholder="Add a note for your trading partner" /><div className="modal-actions"><button type="button" onClick={() => { setOfferListing(null); setCounterTradeId(null); }}>Cancel</button><button type="submit" disabled={savingOffer || !offerPinId || myPins.length === 0}>{savingOffer ? "Sending…" : counterTradeId ? "Send counteroffer" : "Send proposal"}</button></div></form></div></div>}
+      {outsideExchangeOpen && <div className="modal-backdrop" onClick={() => setOutsideExchangeOpen(false)}><div className="modal multi-trade-modal" role="dialog" aria-modal="true" aria-labelledby="outside-exchange-title" onClick={e => e.stopPropagation()}><div className="modal-header"><div><span className="eyebrow">COLLECTION EXCHANGE</span><h2 id="outside-exchange-title">Record an exchange</h2><p>Add multiple pins given and received. Both sides save together.</p></div><button className="icon-button" type="button" onClick={() => setOutsideExchangeOpen(false)} aria-label="Close">×</button></div><form onSubmit={recordOutsideExchange}><h3>Pins you gave away</h3>{exchangeGivenItems.map((item,index) => <div className="exchange-multi-row" key={`given-${index}`}><div className="exchange-row-fields"><label>Pin<select value={item.pin_id} onChange={e => setExchangeGivenItems(items => items.map((row,i) => i===index ? {...row,pin_id:e.target.value} : row))} required><option value="">Choose from collection</option>{myPins.map(pin => <option key={pin.id} value={pin.id}>{pin.name} — owned {pin.owned}</option>)}</select></label><label>Quantity<input type="number" min="1" max={myPins.find(pin => pin.id===item.pin_id)?.owned || 1} value={item.quantity} onChange={e => setExchangeGivenItems(items => items.map((row,i) => i===index ? {...row,quantity:Number(e.target.value)} : row))} required /></label></div><button type="button" className="button button-secondary" disabled={exchangeGivenItems.length===1} onClick={() => setExchangeGivenItems(items => items.filter((_,i)=>i!==index))}>Remove</button></div>)}<button type="button" className="button button-secondary" onClick={() => setExchangeGivenItems(items => [...items,{pin_id:"",quantity:1}])}>+ Add another pin given</button>
+        <h3>Pins you received</h3>{exchangeReceivedItems.map((item,index) => <div className="exchange-multi-row" key={`received-${index}`}><div className="choice-row"><label><input type="radio" checked={item.mode==="existing"} onChange={() => setExchangeReceivedItems(items=>items.map((row,i)=>i===index?{...row,mode:"existing"}:row))} /> Existing catalog pin</label><label><input type="radio" checked={item.mode==="new"} onChange={() => setExchangeReceivedItems(items=>items.map((row,i)=>i===index?{...row,mode:"new"}:row))} /> Create new</label></div>{item.mode==="existing" ? <label>Received pin<select value={item.pin_id} onChange={e=>setExchangeReceivedItems(items=>items.map((row,i)=>i===index?{...row,pin_id:e.target.value}:row))} required><option value="">Choose catalog pin</option>{catalogPins.map(pin=><option key={pin.id} value={pin.id}>{pin.name} — {pin.franchise || pin.park || "Uncategorized"}</option>)}</select></label> : <div className="exchange-row-fields"><label>Pin name<input value={item.name} onChange={e=>setExchangeReceivedItems(items=>items.map((row,i)=>i===index?{...row,name:e.target.value}:row))} required /></label><label>Set / franchise<input value={item.franchise} onChange={e=>setExchangeReceivedItems(items=>items.map((row,i)=>i===index?{...row,franchise:e.target.value}:row))} /></label><label>Character<input value={item.character_name} onChange={e=>setExchangeReceivedItems(items=>items.map((row,i)=>i===index?{...row,character_name:e.target.value}:row))} /></label><label>Image URL<input type="url" value={item.image_url} onChange={e=>setExchangeReceivedItems(items=>items.map((row,i)=>i===index?{...row,image_url:e.target.value}:row))} placeholder="https://…" /></label></div>}<label>Quantity received<input type="number" min="1" value={item.quantity} onChange={e=>setExchangeReceivedItems(items=>items.map((row,i)=>i===index?{...row,quantity:Number(e.target.value)}:row))} required /></label><button type="button" className="button button-secondary" disabled={exchangeReceivedItems.length===1} onClick={()=>setExchangeReceivedItems(items=>items.filter((_,i)=>i!==index))}>Remove received pin</button></div>)}<button type="button" className="button button-secondary" onClick={()=>setExchangeReceivedItems(items=>[...items,{mode:"existing",pin_id:"",quantity:1,name:"",franchise:"",character_name:"",image_url:""}])}>+ Add another pin received</button><div className="modal-actions"><button type="button" onClick={()=>setOutsideExchangeOpen(false)}>Cancel</button><button type="submit" disabled={savingExchange || !exchangeGivenItems.some(i=>i.pin_id) || !exchangeReceivedItems.length}>{savingExchange?"Saving…":"Complete exchange"}</button></div></form></div></div>}
+      {offerListing && <div className="modal-backdrop" onClick={() => { setOfferListing(null); setCounterTradeId(null); }}><div className="modal multi-trade-modal" role="dialog" aria-modal="true" aria-labelledby="offer-trade-title" onClick={e => e.stopPropagation()}><div className="modal-header"><div><span className="eyebrow">TRADE PROPOSAL</span><h2 id="offer-trade-title">{counterTradeId ? "Make a counteroffer" : "Offer a trade"}</h2><p>Trading with @{offerListing.owner?.username || "your friend"}. Select multiple pins on either side.</p></div><button className="icon-button" type="button" onClick={() => { setOfferListing(null); setCounterTradeId(null); }} aria-label="Close">×</button></div><form onSubmit={createOffer}>
+        <h3>What you're offering</h3><div className="offer-pin-view-tabs" role="group" aria-label="Filter your pins"><button type="button" className={offerPinView === "collection" ? "button button-primary" : "button button-secondary"} onClick={() => setOfferPinView("collection")}>My collection</button><button type="button" className={offerPinView === "tradable" ? "button button-primary" : "button button-secondary"} onClick={() => setOfferPinView("tradable")}>Tradable pins</button><button type="button" className={offerPinView === "all" ? "button button-primary" : "button button-secondary"} onClick={() => setOfferPinView("all")}>All pins</button></div>
+        <div className="offer-pin-card-grid">{(offerPinView === "all" ? catalogPins.map(pin => { const owned = myPins.find(m => m.id === pin.id); return { ...pin, imageUrl: pin.imageUrl || pin.image_url || null, set: pin.franchise || pin.park || "Uncategorized", owned: owned?.owned || 0, tradeable: owned?.tradeable || 0 }; }) : offerPinView === "tradable" ? myPins.filter(pin => pin.tradeable > 0) : myPins).map(pin => { const selectable = pin.owned > 0; const selected = offerSelections.some(item => String(item.pin_id) === String(pin.id)); const selection = offerSelections.find(item => String(item.pin_id) === String(pin.id)); return <div key={pin.id} className={`offer-pin-card${selected ? " selected" : ""}${!selectable ? " unavailable" : ""}`}><button type="button" disabled={!selectable} className="offer-pin-card-select" onClick={() => toggleTradeSelection(setOfferSelections, offerSelections, pin.id)} aria-pressed={selected}><div className="offer-pin-card-image"><PinArt pin={{name:pin.name, imageUrl:pin.imageUrl || pin.image_url || null}} small /></div><strong>{pin.name}</strong><span>{pin.set || pin.franchise || pin.park || "Uncategorized"}</span><span>{selectable ? `${pin.owned} owned` : "Not in your collection"}</span><span>{selected ? "✓ Selected" : "Select pin"}</span></button>{selected && <label className="multi-quantity">Quantity <input aria-label={`Quantity of ${pin.name} offered`} type="number" min="1" max={pin.owned} value={selection.quantity} onChange={e => updateTradeSelectionQuantity(setOfferSelections, offerSelections, pin.id, e.target.value)} required /></label>}</div>; })}</div>
+        <h3>What you want in return</h3><p className="subtle-count">Choose one or more pins from this friend's available listings. Each must be marked tradeable by its owner.</p><div className="offer-pin-card-grid">{traderPins.filter(pin => pin.ownerId === offerListing.ownerId).map(pin => { const selected = requestSelections.some(item => String(item.pin_id) === String(pin.pinId)); const selection = requestSelections.find(item => String(item.pin_id) === String(pin.pinId)); return <div key={pin.pinId} className={`offer-pin-card${selected ? " selected" : ""}`}><button type="button" className="offer-pin-card-select" onClick={() => toggleTradeSelection(setRequestSelections, requestSelections, pin.pinId)} aria-pressed={selected}><div className="offer-pin-card-image"><PinArt pin={{name:pin.name, imageUrl:pin.imageUrl}} small /></div><strong>{pin.name}</strong><span>{pin.set || "Pin collection"}</span><span>{pin.quantity} tradeable</span><span>{selected ? "✓ Selected" : "Select pin"}</span></button>{selected && <label className="multi-quantity">Quantity <input aria-label={`Quantity of ${pin.name} requested`} type="number" min="1" max={pin.quantity} value={selection.quantity} onChange={e => updateTradeSelectionQuantity(setRequestSelections, requestSelections, pin.pinId, e.target.value)} required /></label>}</div>; })}</div>
+        <label htmlFor="offer-message">Message (optional)</label><textarea id="offer-message" value={offerMessage} onChange={e => setOfferMessage(e.target.value)} rows={3} maxLength={500} placeholder="Add a note for your trading partner" /><div className="multi-trade-summary">Offering {offerSelections.length} pin design(s) · Requesting {requestSelections.length} pin design(s)</div><div className="modal-actions"><button type="button" onClick={() => { setOfferListing(null); setCounterTradeId(null); }}>Cancel</button><button type="submit" disabled={savingOffer || !offerSelections.length || !requestSelections.length}>{savingOffer ? "Sending…" : counterTradeId ? "Send counteroffer" : "Send proposal"}</button></div></form></div></div>}
     </>
   );
 }

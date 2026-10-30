@@ -372,13 +372,15 @@ useEffect(() => {
       </aside>
       {mobileMenuOpen && <button className="mobile-scrim" onClick={() => setMobileMenuOpen(false)} aria-label="Close navigation" />}
       <main className="main-area">
-        <header className="topbar"><button className="mobile-menu-button" onClick={() => setMobileMenuOpen(true)} aria-label="Open navigation"><Menu size={22} /></button><div className="breadcrumb"><span>Pinfolio</span><ChevronRight size={15} /><strong>{page}</strong></div><div className="topbar-actions"><span className="sync-status"><span className="status-dot"></span>{isDemoMode ? "Preview mode" : "Connected"}</span><button className="icon-button notification-button" aria-label="Notifications"><Bell size={19} /></button><div
-  className="avatar top-avatar"
-  title={userEmail}
-  aria-label={`Signed in as ${userEmail}`}
+        <header className="topbar"><button className="mobile-menu-button" onClick={() => setMobileMenuOpen(true)} aria-label="Open navigation"><Menu size={22} /></button><div className="breadcrumb"><span>Pinfolio</span><ChevronRight size={15} /><strong>{page}</strong></div><div className="topbar-actions"><span className="sync-status"><span className="status-dot"></span>{isDemoMode ? "Preview mode" : "Connected"}</span><button className="icon-button notification-button" aria-label="Notifications"><Bell size={19} /></button><button
+  type="button"
+  className="avatar top-avatar profile-link-button"
+  title="Edit profile"
+  aria-label="Edit profile"
+  onClick={() => navigate("More")}
 >
   {profileAvatarUrl ? <img src={profileAvatarUrl} alt="Profile" /> : userEmail.slice(0, 1).toUpperCase()}
-</div></div></header>
+</button></div></header>
         <div className="page-content">
         {page === "Dashboard" && <Dashboard setPage={navigate} pins={collectionPins} wishlistItems={wishlistItems} loading={collectionLoading || wishlistLoading} />}
         {page === "Collection" && (
