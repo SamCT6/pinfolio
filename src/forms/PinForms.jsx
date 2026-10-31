@@ -78,7 +78,7 @@ export function PinDetail({ pin, onClose, onEdit, onRemove }) {
 
         {pin.purchaseCost != null && (
           <p>
-            <strong>Purchase cost:</strong>{" "}
+            <strong>Pin value:</strong>{" "}
             ${Number(pin.purchaseCost).toFixed(2)}
           </p>
         )}
@@ -246,7 +246,7 @@ export function AddPinForm({ onClose, onSaved, userId }) {
       return;
     }
     if (purchaseCost !== null && (!Number.isFinite(purchaseCost) || purchaseCost < 0)) {
-      setMessage("Enter a valid purchase cost.");
+      setMessage("Enter a valid Pin value.");
       return;
     }
 
@@ -483,7 +483,7 @@ export function AddPinForm({ onClose, onSaved, userId }) {
             <label>Quantity tradeable
               <input type="number" min="0" step="1" value={tradeable} onChange={(e) => setTradeable(e.target.value)} required />
             </label>
-            <label>Purchase cost (optional)
+            <label>Pin value (optional)
               <input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" />
             </label>
             <label>Authenticity
@@ -899,7 +899,7 @@ export function EditCollectionForm({ pin, session, onClose, onSaved }) {
     }
 
     if (cost !== null && (!Number.isFinite(cost) || cost < 0)) {
-      setError("Purchase cost must be zero or more.");
+      setError("Pin value must be zero or more.");
       return;
     }
 
@@ -1127,7 +1127,7 @@ try {
             onChange={(event) => setTradeable(event.target.value)}
           />
 
-          <label htmlFor="collection-cost">Total purchase cost (optional)</label>
+          <label htmlFor="collection-cost">Total Pin value (optional)</label>
           <input
             id="collection-cost"
             type="number"
@@ -1303,7 +1303,7 @@ export function EditPinForm({ pin, onClose, onSaved, onRemove }) {
       purchaseCost !== null &&
       (!Number.isFinite(purchaseCost) || purchaseCost < 0)
     ) {
-      setMessage("Enter a valid purchase cost.");
+      setMessage("Enter a valid Pin value.");
       return;
     }
 
@@ -1418,7 +1418,7 @@ export function EditPinForm({ pin, onClose, onSaved, onRemove }) {
             </label>
 
             <label>
-              Purchase cost (optional)
+              Pin value (optional)
               <input
                 type="number"
                 min="0"
