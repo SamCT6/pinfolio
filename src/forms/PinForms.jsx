@@ -411,7 +411,7 @@ export function AddPinForm({ onClose, onSaved, userId }) {
         ) : (
           <div className="add-pin-fields">
             <AutocompleteField label="Pin name *" value={name} onChange={setName} options={sharedPins.map((pin) => pin.name)} placeholder="e.g. Mickey Mouse castle pin" />
-            <AutocompleteField label="Character" value={character} onChange={setCharacter} options={sharedPins.map((pin) => pin.character_name)} />
+            <label>Characters (separate with commas)<input type="text" value={character} onChange={(event) => setCharacter(event.target.value)} placeholder="e.g. Mickey Mouse, Minnie Mouse, Pluto" /></label>
             <AutocompleteField label="Franchise" value={franchise} onChange={setFranchise} options={sharedPins.map((pin) => pin.franchise)} placeholder="e.g. Mickey Mouse" />
             <AutocompleteField label="Set name (optional)" value={pinSetName} onChange={handleSetNameChange} options={pinSets.map((set) => set.name)} placeholder="Type to search shared sets" onSelect={handleSetNameChange} />
             {pinSets.length > 0 && <small>Suggestions include {pinSets.length} shared set{pinSets.length === 1 ? "" : "s"} contributed by Pinfolio users.</small>}
@@ -623,7 +623,7 @@ export function AddWishlistForm({ onClose, onSaved, session, initialPin = null }
           {!loadingPins && search && !selectedPin && filteredPins.length === 0 && <p>No matching catalog pin. Choose “Create new pin” to add it.</p>}
         </> : <div className="add-pin-fields">
           <AutocompleteField label="Pin name *" value={name} onChange={setName} options={catalogPins.map((pin) => pin.name)} placeholder="Pin name" />
-          <AutocompleteField label="Character" value={character} onChange={setCharacter} options={catalogPins.map((pin) => pin.character_name)} />
+          <label>Characters (separate with commas)<input type="text" value={character} onChange={(event) => setCharacter(event.target.value)} placeholder="e.g. Mickey Mouse, Minnie Mouse, Pluto" /></label>
           <AutocompleteField label="Franchise" value={franchise} onChange={setFranchise} options={catalogPins.map((pin) => pin.franchise)} />
           <AutocompleteField label="Park" value={park} onChange={setPark} options={catalogPins.map((pin) => pin.park)} />
           <label>Release year<input type="number" min="1900" max="2100" value={releaseYear} onChange={(event) => setReleaseYear(event.target.value)} /></label>
@@ -1087,7 +1087,7 @@ try {
           <h3>Catalog information</h3>
           <label htmlFor="edit-catalog-pin-name">Pin name *</label>
           <input id="edit-catalog-pin-name" value={pinName} onChange={(e) => setPinName(e.target.value)} required />
-          <AutocompleteField label="Character" value={character} onChange={setCharacter} options={suggestions.map((row) => row.character_name)} />
+          <label>Characters (separate with commas)<input type="text" value={character} onChange={(event) => setCharacter(event.target.value)} placeholder="e.g. Mickey Mouse, Minnie Mouse, Pluto" /></label>
           <AutocompleteField label="Franchise" value={franchise} onChange={setFranchise} options={suggestions.map((row) => row.franchise)} />
           <AutocompleteField label="Disney park" value={park} onChange={setPark} options={suggestions.map((row) => row.park)} />
           <label htmlFor="edit-catalog-year">Release year</label><input id="edit-catalog-year" type="number" min="1900" max="2100" value={releaseYear} onChange={(e) => setReleaseYear(e.target.value)} />
