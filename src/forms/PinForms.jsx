@@ -332,6 +332,7 @@ export function AddPinForm({ onClose, onSaved, userId }) {
             pin_set_id: pinSetId,
             created_by: userId,
             is_catalog: true,
+            authenticity_status: authenticityStatus,
           })
           .select("id")
           .single();
@@ -341,16 +342,6 @@ export function AddPinForm({ onClose, onSaved, userId }) {
       }
 
       if (!pinId) throw new Error("Choose a catalog pin or create a new one.");
-
-      // Save the entered pin value to the shared catalog so every user sees it.
-      // Keep purchase_cost on collection_items as the user's personal purchase cost too.
-      if (purchaseCost !== null) {
-        const { error: sharedValueError } = await supabase.rpc("set_pin_catalog_value", {
-          target_pin_id: pinId,
-          new_catalog_value: purchaseCost,
-        });
-        if (sharedValueError) throw sharedValueError;
-      }
 
       const { error: itemError } = await supabase
         .from("collection_items")
