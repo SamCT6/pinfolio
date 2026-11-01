@@ -332,6 +332,7 @@ export function AddPinForm({ onClose, onSaved, userId }) {
             pin_set_id: pinSetId,
             created_by: userId,
             is_catalog: true,
+            authenticity_status: authenticityStatus,
           })
           .select("id")
           .single();
