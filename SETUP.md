@@ -1,11 +1,25 @@
-# Pinfolio shared pin value fix
+# Pinfolio shared pin value + detail view update
 
-This is a targeted repair for the shared pin value update. It restores the full `PinForms.jsx` from the password-recovery-compatible baseline and adds the shared catalog-value save call, so `PasswordRecoveryScreen` remains exported for `src/App.jsx`.
+## What this changes
+- A value entered when adding a pin is stored as the shared `pins.catalog_value`.
+- The shared value is updated automatically when a new `collection_items` row is created with a purchase/value entered.
+- Personal `collection_items.purchase_cost` remains separate.
+- Clicking a collection pin opens its detail view and shows the shared Pin value.
+- Clicking a catalog pin opens a detail view and shows the shared Pin value.
+- Catalog cards also show the shared Pin value when one exists.
 
-## Apply
-1. Back up your existing project files.
-2. Copy `src/forms/PinForms.jsx` and `src/components/Catalog.jsx` from this package into the matching paths in your project. Do not replace `src/App.jsx`.
-3. In Supabase Dashboard → SQL Editor, run `supabase/migrations/20261101000004_pinfolio_shared_pin_value_from_add_pin.sql`.
-4. Run `npm run dev` and test adding a pin with a value. That value updates the shared catalog; `purchase_cost` remains recorded in your personal collection.
+## Supabase setup
+Run this migration in Supabase SQL Editor:
 
-This ZIP has not been tested against your live Supabase project.
+`supabase/migrations/20261101000005_pinfolio_shared_pin_value_trigger.sql`
+
+This migration creates `pins.catalog_value` if it does not exist and adds an AFTER INSERT trigger on `collection_items`.
+
+The trigger intentionally runs only when a collection item is first inserted. Editing a user's personal purchase cost later will not silently change the shared catalog value.
+
+## Frontend files
+Replace:
+- `src/forms/PinForms.jsx`
+- `src/components/Catalog.jsx`
+
+Do not replace `src/App.jsx`.
