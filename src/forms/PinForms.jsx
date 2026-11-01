@@ -4,35 +4,11 @@ import {
   Search, Bell, Plus, ChevronRight, ArrowUpRight, LockKeyhole,
   SlidersHorizontal, Sparkles, ShieldCheck, Menu, X, CircleHelp,
   Settings, Layers3, ChartNoAxesCombined, ImagePlus, EyeOff, Clock3,
-  CheckCircle2, Handshake, ArrowRightLeft, Eye
+  CheckCircle2, Handshake, ArrowRightLeft
 } from "lucide-react";
 import { supabase, isDemoMode } from "../lib/supabase";
 
 import { PinArt, SectionTitle } from "../components/AppViews.jsx";
-
-// In-app autocomplete dropdown (not the browser/keyboard datalist).
-function AutocompleteField({ label, value, onChange, options = [], placeholder = "", onSelect, type = "text" }) {
-  const [open, setOpen] = useState(false);
-  const normalized = String(value || "").trim().toLowerCase();
-  const matches = [...new Set(options.filter(Boolean).map((option) => String(option).trim()).filter(Boolean))]
-    .filter((option) => !normalized || option.toLowerCase().includes(normalized))
-    .slice(0, 8);
-  return (
-    <label className="autocomplete-field">{label}
-      <input type={type} value={value} onChange={(event) => { onChange(event.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)} onBlur={() => window.setTimeout(() => setOpen(false), 140)}
-        placeholder={placeholder} autoComplete="off" />
-      {open && matches.length > 0 && (
-        <div className="autocomplete-menu" role="listbox">
-          {matches.map((option) => <button type="button" role="option" key={option} className="autocomplete-option"
-            onMouseDown={(event) => event.preventDefault()} onClick={() => { onChange(option); onSelect?.(option); setOpen(false); }}>
-            {option}
-          </button>)}
-        </div>
-      )}
-    </label>
-  );
-}
 
 export function PinDetail({ pin, onClose, onEdit, onRemove }) {
   if (!pin) return null;
@@ -78,7 +54,7 @@ export function PinDetail({ pin, onClose, onEdit, onRemove }) {
 
         {pin.purchaseCost != null && (
           <p>
-            <strong>Pin value:</strong>{" "}
+            <strong>Purchase cost:</strong>{" "}
             ${Number(pin.purchaseCost).toFixed(2)}
           </p>
         )}
@@ -129,73 +105,14 @@ export function AddPinForm({ onClose, onSaved, userId }) {
   const [character, setCharacter] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
   const [franchise, setFranchise] = useState("");
-  const [pinSetName, setPinSetName] = useState("");
-  const [pinSets, setPinSets] = useState([]);
   const [park, setPark] = useState("");
   const [year, setYear] = useState("");
   const [owned, setOwned] = useState("1");
   const [tradeable, setTradeable] = useState("0");
   const [cost, setCost] = useState("");
-  const [description, setDescription] = useState("");
-  const [editionType, setEditionType] = useState("");
-  const [catalogCode, setCatalogCode] = useState("");
-  const [setNumber, setSetNumber] = useState("");
-  const [authenticityStatus, setAuthenticityStatus] = useState("unknown");
-  const [visibility, setVisibility] = useState("private");
-  const [sharedPins, setSharedPins] = useState([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadSharedSets() {
-      if (!supabase) return;
-      const allSets = [];
-      for (let start = 0; ; start += 1000) {
-        const { data, error } = await supabase
-          .from("pin_sets")
-          .select("id, name, franchise, release_year, description")
-          .order("name", { ascending: true })
-          .range(start, start + 999);
-
-        if (cancelled) return;
-        if (error) {
-          console.error("Could not load shared pin sets:", error);
-          setMessage("Could not load shared sets. You can still enter a set name manually.");
-          return;
-        }
-        allSets.push(...(data || []));
-        if (!data || data.length < 1000) break;
-      }
-
-      if (!cancelled) setPinSets(allSets);
-    }
-
-    loadSharedSets();
-    async function loadSharedPins() {
-      if (!supabase) return;
-      const { data, error } = await supabase.from("pins")
-        .select("id, name, character_name, franchise, park, release_year, edition_type, description, image_url, image_path, catalog_code, set_number, pin_set_id")
-        .order("name", { ascending: true }).limit(5000);
-      if (!cancelled && !error) setSharedPins(data || []);
-    }
-    loadSharedPins();
-    return () => { cancelled = true; };
-  }, []);
-
-  function handleSetNameChange(value) {
-    setPinSetName(value);
-    const match = pinSets.find(
-      (set) => set.name.trim().toLowerCase() === value.trim().toLowerCase()
-    );
-    if (match) {
-      if (match.franchise) setFranchise(match.franchise);
-      if (match.release_year) setYear(String(match.release_year));
-    }
-  }
 
   async function searchCatalog() {
     if (!supabase) return;
@@ -207,7 +124,7 @@ export function AddPinForm({ onClose, onSaved, userId }) {
 
     let catalogQuery = supabase
       .from("pins")
-      .select("id, name, character_name, franchise, park, release_year, edition_type, description, image_url, image_path, catalog_code, set_number, pin_set_id")
+      .select("id, name, character_name, franchise, park, release_year")
       .order("name")
       .limit(20);
 
@@ -246,7 +163,7 @@ export function AddPinForm({ onClose, onSaved, userId }) {
       return;
     }
     if (purchaseCost !== null && (!Number.isFinite(purchaseCost) || purchaseCost < 0)) {
-      setMessage("Enter a valid Pin value.");
+      setMessage("Enter a valid purchase cost.");
       return;
     }
 
@@ -260,51 +177,6 @@ export function AddPinForm({ onClose, onSaved, userId }) {
         if (!name.trim()) throw new Error("Pin name is required.");
 
         let imagePath = null;
-        let pinSetId = null;
-        const normalizedSetName = pinSetName.trim().toLowerCase();
-
-        if (normalizedSetName) {
-          const existingSet = pinSets.find(
-            (set) => set.name.trim().toLowerCase() === normalizedSetName
-          );
-
-          if (existingSet) {
-            pinSetId = existingSet.id;
-          } else {
-            const { data: newSet, error: setError } = await supabase
-              .from("pin_sets")
-              .insert({
-                name: pinSetName.trim(),
-                franchise: franchise.trim() || null,
-                release_year: year ? Number(year) : null,
-                created_by: userId,
-              })
-              .select("id, name, franchise, release_year, description")
-              .single();
-
-            if (setError) {
-              // Another user may have created the same set at the same time.
-              if (setError.code === "23505") {
-                const { data: matchingSet, error: lookupError } = await supabase
-                  .from("pin_sets")
-                  .select("id, name, franchise, release_year, description")
-                  .ilike("name", pinSetName.trim())
-                  .limit(1)
-                  .maybeSingle();
-                if (lookupError || !matchingSet) throw setError;
-                pinSetId = matchingSet.id;
-                setPinSets((current) => current.some((set) => set.id === matchingSet.id)
-                  ? current : [...current, matchingSet]);
-              } else {
-                throw setError;
-              }
-            } else {
-              pinSetId = newSet.id;
-              setPinSets((current) => current.some((set) => set.id === newSet.id)
-                ? current : [...current, newSet]);
-            }
-          }
-        }
 
         if (imageFile) {
           const fileExtension = imageFile.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -323,16 +195,9 @@ export function AddPinForm({ onClose, onSaved, userId }) {
             franchise: franchise.trim() || null,
             park: park.trim() || null,
             release_year: year ? Number(year) : null,
-            edition_type: editionType.trim() || null,
-            description: description.trim() || null,
-            catalog_code: catalogCode.trim() || null,
-            set_number: setNumber.trim() || null,
-            image_url: imagePath ? null : (imageUrl.trim() || null),
+            image_url: null,
             image_path: imagePath,
-            pin_set_id: pinSetId,
             created_by: userId,
-            is_catalog: true,
-            authenticity_status: authenticityStatus,
           })
           .select("id")
           .single();
@@ -343,6 +208,16 @@ export function AddPinForm({ onClose, onSaved, userId }) {
 
       if (!pinId) throw new Error("Choose a catalog pin or create a new one.");
 
+      // A value entered while adding a pin is also saved as the shared catalog value.
+      // Keep purchase_cost below as the user's own personal purchase cost.
+      if (purchaseCost !== null) {
+        const { error: catalogValueError } = await supabase.rpc("set_pin_catalog_value", {
+          target_pin_id: pinId,
+          new_catalog_value: purchaseCost,
+        });
+        if (catalogValueError) throw new Error(`Could not save the shared pin value. Make sure the shared catalog value migration is applied. ${catalogValueError.message}`);
+      }
+
       const { error: itemError } = await supabase
         .from("collection_items")
         .insert({
@@ -351,8 +226,7 @@ export function AddPinForm({ onClose, onSaved, userId }) {
           owned_quantity: ownedCount,
           tradeable_quantity: tradeableCount,
           purchase_cost: purchaseCost,
-          authenticity_status: authenticityStatus,
-          visibility,
+          authenticity_status: "unknown",
         });
 
       if (itemError) {
@@ -384,14 +258,8 @@ export function AddPinForm({ onClose, onSaved, userId }) {
 
         {mode === "search" ? (
           <div>
-            <label className="autocomplete-field">Search catalog
-              <input autoComplete="off" value={query} onChange={(e) => {
-                const value = e.target.value;
-                setQuery(value);
-                setSelectedPin(null);
-                const term = value.trim().toLowerCase();
-                setResults(sharedPins.filter((pin) => `${pin.name || ""} ${pin.character_name || ""} ${pin.franchise || ""} ${pin.park || ""} ${pin.catalog_code || ""}`.toLowerCase().includes(term)).slice(0, 20));
-              }} placeholder="Type a pin, character, or set..." />
+            <label>Search catalog
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Enter a pin name..." />
             </label>
             <button className="button button-secondary button-wide" type="button" onClick={searchCatalog} disabled={busy || !query.trim()}>
               {busy ? "Searching..." : "Search pins"}
@@ -411,22 +279,23 @@ export function AddPinForm({ onClose, onSaved, userId }) {
           </div>
         ) : (
           <div className="add-pin-fields">
-            <AutocompleteField label="Pin name *" value={name} onChange={setName} options={sharedPins.map((pin) => pin.name)} placeholder="e.g. Mickey Mouse castle pin" />
-            <label>Characters (separate with commas)<input type="text" value={character} onChange={(event) => setCharacter(event.target.value)} placeholder="e.g. Mickey Mouse, Minnie Mouse, Pluto" /></label>
-            <AutocompleteField label="Franchise" value={franchise} onChange={setFranchise} options={sharedPins.map((pin) => pin.franchise)} placeholder="e.g. Mickey Mouse" />
-            <AutocompleteField label="Set name (optional)" value={pinSetName} onChange={handleSetNameChange} options={pinSets.map((set) => set.name)} placeholder="Type to search shared sets" onSelect={handleSetNameChange} />
-            {pinSets.length > 0 && <small>Suggestions include {pinSets.length} shared set{pinSets.length === 1 ? "" : "s"} contributed by Pinfolio users.</small>}
-            <AutocompleteField label="Disney park" value={park} onChange={setPark} options={sharedPins.map((pin) => pin.park)} placeholder="Start typing a park" />
-            <label>Release year<input type="number" min="1900" max="2100" value={year} onChange={(e) => setYear(e.target.value)} /></label>
-            <AutocompleteField label="Edition type" value={editionType} onChange={setEditionType} options={sharedPins.map((pin) => pin.edition_type)} placeholder="e.g. Limited Edition, Open Edition" />
-            <AutocompleteField label="Set number" value={setNumber} onChange={setSetNumber} options={sharedPins.filter((pin) => pin.pin_set_id === pinSets.find((set) => set.name.toLowerCase() === pinSetName.trim().toLowerCase())?.id).map((pin) => pin.set_number)} />
-            <AutocompleteField label="Catalog code (optional)" value={catalogCode} onChange={setCatalogCode} options={sharedPins.map((pin) => pin.catalog_code)} />
-            <label>Description (optional)<textarea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Details about this pin" /></label>
-
-            <label>Photo URL (optional)
-              <input type="url" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…" autoComplete="off" />
+            <label>Pin name *
+              <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Mickey Mouse castle pin" />
             </label>
-            <label>Pin photo upload (optional)
+            <label>Character
+              <input value={character} onChange={(e) => setCharacter(e.target.value)} />
+            </label>
+            <label>Franchise or set
+              <input value={franchise} onChange={(e) => setFranchise(e.target.value)} />
+            </label>
+            <label>Disney park
+              <input value={park} onChange={(e) => setPark(e.target.value)} />
+            </label>
+            <label>Release year
+              <input type="number" min="1900" max="2100" value={year} onChange={(e) => setYear(e.target.value)} />
+            </label>
+
+            <label>Pin photo
               <input
                 type="file"
                 accept="image/*"
@@ -484,18 +353,8 @@ export function AddPinForm({ onClose, onSaved, userId }) {
             <label>Quantity tradeable
               <input type="number" min="0" step="1" value={tradeable} onChange={(e) => setTradeable(e.target.value)} required />
             </label>
-            <label>Pin value (optional)
+            <label>Purchase cost (optional)
               <input type="number" min="0" step="0.01" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" />
-            </label>
-            <label>Authenticity
-              <select value={authenticityStatus} onChange={(e) => setAuthenticityStatus(e.target.value)}>
-                <option value="unknown">Unknown</option><option value="suspected_counterfeit">Suspected counterfeit</option><option value="confirmed_counterfeit">Confirmed counterfeit</option><option value="verified_authentic">Verified authentic</option>
-              </select>
-            </label>
-            <label>Visibility
-              <select value={visibility} onChange={(e) => setVisibility(e.target.value)}>
-                <option value="private">Private — only me</option><option value="friends">Friends — accepted friends</option><option value="public">Public — signed-in users</option>
-              </select>
             </label>
           </div>
 
@@ -511,135 +370,215 @@ export function AddPinForm({ onClose, onSaved, userId }) {
 }
 
 
-export function AddWishlistForm({ onClose, onSaved, session, initialPin = null }) {
+export function AddWishlistForm({ onClose, onSaved, session }) {
   const [catalogPins, setCatalogPins] = useState([]);
-  const [pinSets, setPinSets] = useState([]);
-  const [mode, setMode] = useState(initialPin ? "search" : "search");
   const [loadingPins, setLoadingPins] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState(initialPin?.name || "");
-  const [selectedPin, setSelectedPin] = useState(initialPin);
-  const [name, setName] = useState("");
-  const [character, setCharacter] = useState("");
-  const [franchise, setFranchise] = useState("");
-  const [park, setPark] = useState("");
-  const [releaseYear, setReleaseYear] = useState("");
-  const [description, setDescription] = useState("");
-  const [pinSetName, setPinSetName] = useState("");
+  const [search, setSearch] = useState("");
+  const [pinId, setPinId] = useState("");
   const [priority, setPriority] = useState("normal");
   const [targetPrice, setTargetPrice] = useState("");
   const [notes, setNotes] = useState("");
 
   useEffect(() => {
     let ignore = false;
+
     async function loadPins() {
-      if (!supabase) { setError("Supabase isn't connected."); setLoadingPins(false); return; }
-      const [pinsResult, setsResult] = await Promise.all([
-        supabase.from("pins").select("id,name,character_name,franchise,park,release_year,description,edition_type,image_url,image_path,pin_set_id,set_number,catalog_code").eq("is_catalog", true).order("name").limit(5000),
-        supabase.from("pin_sets").select("id,name,franchise,release_year").order("name").limit(3000),
-      ]);
+      if (!supabase) {
+        setError("Supabase isn't connected.");
+        setLoadingPins(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("pins")
+        .select("id, name, character_name, franchise, park, image_url")
+        .order("name", { ascending: true });
+
       if (ignore) return;
-      if (pinsResult.error) { setError("Couldn't load the pin catalog. Please try again."); console.error(pinsResult.error); }
-      else setCatalogPins(pinsResult.data || []);
-      if (!setsResult.error) setPinSets(setsResult.data || []);
+
+      if (error) {
+        setError("Couldn't load the pin catalog. Please try again.");
+        console.error("Wishlist catalog error:", error);
+      } else {
+        setCatalogPins(data || []);
+      }
+
       setLoadingPins(false);
     }
+
     loadPins();
-    return () => { ignore = true; };
+
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const filteredPins = catalogPins.filter((pin) =>
-    `${pin.name || ""} ${pin.character_name || ""} ${pin.franchise || ""} ${pin.park || ""} ${pin.catalog_code || ""}`
-      .toLowerCase().includes(search.trim().toLowerCase())
-  ).slice(0, 10);
-
-  function choosePin(pin) {
-    setSelectedPin(pin);
-    setSearch(pin.name);
-    setError("");
-  }
+    `${pin.name || ""} ${pin.character_name || ""} ${
+      pin.franchise || ""
+    } ${pin.park || ""}`
+      .toLowerCase()
+      .includes(search.toLowerCase())
+  );
 
   async function handleSubmit(event) {
-    event.preventDefault(); setError("");
-    if (!session?.user?.id || !supabase) { setError("Please sign in before adding a wishlist pin."); return; }
+    event.preventDefault();
+    setError("");
+
+    if (!session?.user?.id) {
+      setError("Please sign in before adding a wishlist pin.");
+      return;
+    }
+
+    if (!pinId) {
+      setError("Please select a pin from the catalog.");
+      return;
+    }
+
     const price = targetPrice.trim() === "" ? null : Number(targetPrice);
-    if (price !== null && (!Number.isFinite(price) || price < 0)) { setError("Enter a valid target price of zero or more."); return; }
+
+    if (
+      price !== null &&
+      (!Number.isFinite(price) || price < 0)
+    ) {
+      setError("Enter a valid target price of zero or more.");
+      return;
+    }
+
     setSaving(true);
-    try {
-      let pinId = selectedPin?.id;
-      if (mode === "create") {
-        if (!name.trim()) throw new Error("Pin name is required.");
-        let pinSetId = null;
-        const matchingSet = pinSets.find((set) => set.name.trim().toLowerCase() === pinSetName.trim().toLowerCase());
-        if (matchingSet) pinSetId = matchingSet.id;
-        else if (pinSetName.trim()) {
-          const { data: newSet, error: setError } = await supabase.from("pin_sets").insert({
-            name: pinSetName.trim(), franchise: franchise.trim() || null,
-            release_year: releaseYear ? Number(releaseYear) : null, created_by: session.user.id,
-          }).select("id").single();
-          if (setError) {
-            if (setError.code === "23505") {
-              const { data: foundSet, error: findError } = await supabase.from("pin_sets").select("id").ilike("name", pinSetName.trim()).limit(1).maybeSingle();
-              if (findError || !foundSet) throw setError;
-              pinSetId = foundSet.id;
-            } else throw setError;
-          } else pinSetId = newSet.id;
-        }
-        const { data: newPin, error: pinError } = await supabase.from("pins").insert({
-          name: name.trim(), character_name: character.trim() || null,
-          franchise: franchise.trim() || null, park: park.trim() || null,
-          release_year: releaseYear ? Number(releaseYear) : null,
-          description: description.trim() || null, pin_set_id: pinSetId,
-          created_by: session.user.id, is_catalog: true,
-        }).select("id").single();
-        if (pinError) throw pinError;
-        pinId = newPin.id;
-      } else if (!pinId) {
-        throw new Error("Choose a catalog pin or switch to Create new pin.");
-      }
-      const { error: saveError } = await supabase.from("wishlist_items").insert({
-        user_id: session.user.id, pin_id: pinId, priority, target_price: price, notes: notes.trim() || null,
+
+    const { error: saveError } = await supabase
+      .from("wishlist_items")
+      .insert({
+        user_id: session.user.id,
+        pin_id: pinId,
+        priority,
+        target_price: price,
+        notes: notes.trim() || null,
       });
-      if (saveError) throw saveError;
-      onSaved();
-    } catch (saveError) {
+
+    setSaving(false);
+
+    if (saveError) {
       console.error("Could not save wishlist item:", saveError);
-      setError(saveError.code === "23505" ? "This pin is already on your wishlist." : (saveError.message || "Couldn't save this pin. Please try again."));
-    } finally { setSaving(false); }
+      setError(
+        saveError.code === "23505"
+          ? "This pin may already be on your wishlist."
+          : "Couldn't save this pin. Please try again."
+      );
+      return;
+    }
+
+    onSaved();
   }
 
-  return <div className="modal-backdrop" onClick={onClose}>
-    <div className="modal" role="dialog" aria-modal="true" aria-labelledby="wishlist-form-title" onClick={(event) => event.stopPropagation()}>
-      <div className="modal-header"><div><span className="eyebrow">YOUR NEXT FINDS</span><h2 id="wishlist-form-title">Add to Wishlist</h2></div><button type="button" className="icon-button" onClick={onClose} aria-label="Close form">×</button></div>
-      <div className="filter-chips"><button type="button" className={`chip ${mode === "search" ? "active" : ""}`} onClick={() => { setMode("search"); setError(""); }}>Choose catalog pin</button><button type="button" className={`chip ${mode === "create" ? "active" : ""}`} onClick={() => { setMode("create"); setSelectedPin(null); setError(""); }}>Create new pin</button></div>
-      <form onSubmit={handleSubmit}>
-        {mode === "search" ? <>
-          <label className="autocomplete-field">Find a catalog pin
-            <input value={search} onChange={(event) => { setSearch(event.target.value); setSelectedPin(null); }} placeholder="Type a pin, character, or collection" autoComplete="off" />
-            {search && !selectedPin && filteredPins.length > 0 && <div className="autocomplete-menu" role="listbox">{filteredPins.map((pin) => <button type="button" role="option" className="autocomplete-option" key={pin.id} onMouseDown={(event) => event.preventDefault()} onClick={() => choosePin(pin)}><strong>{pin.name}</strong><span>{[pin.character_name, pin.franchise, pin.park, pin.release_year].filter(Boolean).join(" · ")}</span></button>)}</div>}
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="wishlist-form-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="modal-header">
+          <div>
+            <span className="eyebrow">YOUR NEXT FINDS</span>
+            <h2 id="wishlist-form-title">Add to Wishlist</h2>
+          </div>
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onClose}
+            aria-label="Close form"
+          >
+            ×
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <label htmlFor="wishlist-pin-search">Find a catalog pin</label>
+          <input
+            id="wishlist-pin-search"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search by pin, character, or collection"
+          />
+
+          <label htmlFor="wishlist-pin-select">Select pin</label>
+          <select
+            id="wishlist-pin-select"
+            value={pinId}
+            onChange={(event) => setPinId(event.target.value)}
+            required
+            disabled={loadingPins}
+          >
+            <option value="">
+              {loadingPins ? "Loading catalog..." : "Choose a pin"}
+            </option>
+            {filteredPins.map((pin) => (
+              <option key={pin.id} value={pin.id}>
+                {pin.name}
+                {pin.character_name ? ` — ${pin.character_name}` : ""}
+              </option>
+            ))}
+          </select>
+
+          {!loadingPins && filteredPins.length === 0 && (
+            <p>No matching pins found in the catalog.</p>
+          )}
+
+          <label htmlFor="wishlist-priority">Priority</label>
+          <select
+            id="wishlist-priority"
+            value={priority}
+            onChange={(event) => setPriority(event.target.value)}
+          >
+            <option value="low">Low</option>
+            <option value="normal">Medium</option>
+            <option value="high">High</option>
+          </select>
+
+          <label htmlFor="wishlist-target-price">
+            Target price (optional)
           </label>
-          {loadingPins && <p>Loading catalog…</p>}
-          {selectedPin && <p className="selected-catalog-pin">Selected: <strong>{selectedPin.name}</strong></p>}
-          {!loadingPins && search && !selectedPin && filteredPins.length === 0 && <p>No matching catalog pin. Choose “Create new pin” to add it.</p>}
-        </> : <div className="add-pin-fields">
-          <AutocompleteField label="Pin name *" value={name} onChange={setName} options={catalogPins.map((pin) => pin.name)} placeholder="Pin name" />
-          <label>Characters (separate with commas)<input type="text" value={character} onChange={(event) => setCharacter(event.target.value)} placeholder="e.g. Mickey Mouse, Minnie Mouse, Pluto" /></label>
-          <AutocompleteField label="Franchise" value={franchise} onChange={setFranchise} options={catalogPins.map((pin) => pin.franchise)} />
-          <AutocompleteField label="Park" value={park} onChange={setPark} options={catalogPins.map((pin) => pin.park)} />
-          <label>Release year<input type="number" min="1900" max="2100" value={releaseYear} onChange={(event) => setReleaseYear(event.target.value)} /></label>
-          <AutocompleteField label="Set name (optional)" value={pinSetName} onChange={setPinSetName} options={pinSets.map((set) => set.name)} />
-          <label>Description (optional)<textarea rows={2} value={description} onChange={(event) => setDescription(event.target.value)} /></label>
-        </div>}
-        <label htmlFor="wishlist-priority">Priority</label><select id="wishlist-priority" value={priority} onChange={(event) => setPriority(event.target.value)}><option value="low">Low</option><option value="normal">Medium</option><option value="high">High</option></select>
-        <label htmlFor="wishlist-target-price">Target price (optional)</label><input id="wishlist-target-price" type="number" min="0" step="0.01" value={targetPrice} onChange={(event) => setTargetPrice(event.target.value)} placeholder="e.g. 25.00" />
-        <label htmlFor="wishlist-notes">Notes (optional)</label><textarea id="wishlist-notes" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Edition, color variant, or where you hope to find it..." rows={3} />
-        {error && <p role="alert">{error}</p>}
-        <div className="modal-actions"><button type="button" onClick={onClose}>Cancel</button><button type="submit" disabled={saving || loadingPins || (mode === "search" && !selectedPin)}>{saving ? "Saving..." : "Add to Wishlist"}</button></div>
-      </form>
+          <input
+            id="wishlist-target-price"
+            type="number"
+            min="0"
+            step="0.01"
+            value={targetPrice}
+            onChange={(event) => setTargetPrice(event.target.value)}
+            placeholder="e.g. 25.00"
+          />
+
+          <label htmlFor="wishlist-notes">Notes (optional)</label>
+          <textarea
+            id="wishlist-notes"
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="Edition, color variant, or where you hope to find it..."
+            rows={3}
+          />
+
+          {error && <p role="alert">{error}</p>}
+
+          <div className="modal-actions">
+            <button type="button" onClick={onClose}>
+              Cancel
+            </button>
+            <button type="submit" disabled={saving || loadingPins}>
+              {saving ? "Saving..." : "Add to Wishlist"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
-  </div>;
+  );
 }
+
 
 export function EditWishlistForm({ item, session, onClose, onSaved, onRemove }) {
   const [priority, setPriority] = useState(
@@ -822,51 +761,7 @@ export function EditCollectionForm({ pin, session, onClose, onSaved }) {
   const [error, setError] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
-  const [catalogImageFile, setCatalogImageFile] = useState(null);
-  const [catalogImagePreview, setCatalogImagePreview] = useState("");
-  const [pinName, setPinName] = useState(pin.name || "");
-  const [character, setCharacter] = useState(pin.character || "");
-  const [franchise, setFranchise] = useState(pin.franchise || "");
-  const [park, setPark] = useState(pin.park || "");
-  const [releaseYear, setReleaseYear] = useState(pin.releaseYear == null ? "" : String(pin.releaseYear));
-  const [editionType, setEditionType] = useState(pin.editionType || "");
-  const [description, setDescription] = useState(pin.description || "");
-  const [catalogCode, setCatalogCode] = useState(pin.catalogCode || "");
-  const [setNumber, setSetNumber] = useState(pin.setNumber || "");
-  const [pinSetId, setPinSetId] = useState(pin.pinSetId || "");
-  const [pinSetName, setPinSetName] = useState("");
-  const [catalogImageUrl, setCatalogImageUrl] = useState(pin.catalogImageUrl || "");
-  const [pinSets, setPinSets] = useState([]);
-  const [suggestions, setSuggestions] = useState([]);
 
-  useEffect(() => {
-    let active = true;
-    if (!supabase) return;
-    Promise.all([
-      supabase.from("pin_sets").select("id,name,franchise,release_year").order("name"),
-      supabase.from("pins").select("name,character_name,franchise,park,edition_type,catalog_code,set_number")
-    ]).then(([setsResult, pinsResult]) => {
-      if (!active) return;
-      if (!setsResult.error) {
-        const loadedSets = setsResult.data || [];
-        setPinSets(loadedSets);
-        const currentSet = loadedSets.find((set) => set.id === (pin.pinSetId || ""));
-        if (currentSet) setPinSetName(currentSet.name);
-      }
-      if (!pinsResult.error) setSuggestions(pinsResult.data || []);
-    });
-    return () => { active = false; };
-  }, [pin.pinSetId]);
-
-  function handleSetNameChange(value) {
-    setPinSetName(value);
-    const match = pinSets.find(
-      (set) => set.name.trim().toLowerCase() === value.trim().toLowerCase()
-    );
-    setPinSetId(match?.id || "");
-    if (match?.franchise) setFranchise(match.franchise);
-    if (match?.release_year) setReleaseYear(String(match.release_year));
-  }
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -900,56 +795,14 @@ export function EditCollectionForm({ pin, session, onClose, onSaved }) {
     }
 
     if (cost !== null && (!Number.isFinite(cost) || cost < 0)) {
-      setError("Pin value must be zero or more.");
+      setError("Purchase cost must be zero or more.");
       return;
     }
 
-
-    setSaving(true);
+    
+setSaving(true);
 
 try {
-  // Match an existing shared set or create it, using the same workflow as Add Pin.
-  let resolvedPinSetId = pinSetId || null;
-  const normalizedSetName = pinSetName.trim().toLowerCase();
-  if (normalizedSetName) {
-    const existingSet = pinSets.find((set) => set.name.trim().toLowerCase() === normalizedSetName);
-    if (existingSet) {
-      resolvedPinSetId = existingSet.id;
-    } else {
-      const { data: newSet, error: setError } = await supabase
-        .from("pin_sets")
-        .insert({
-          name: pinSetName.trim(),
-          franchise: franchise.trim() || null,
-          release_year: releaseYear ? Number(releaseYear) : null,
-          created_by: session.user.id,
-        })
-        .select("id, name, franchise, release_year, description")
-        .single();
-
-      if (setError) {
-        if (setError.code === "23505") {
-          const { data: matchingSet, error: lookupError } = await supabase
-            .from("pin_sets")
-            .select("id, name, franchise, release_year, description")
-            .ilike("name", pinSetName.trim())
-            .limit(1)
-            .maybeSingle();
-          if (lookupError || !matchingSet) throw setError;
-          resolvedPinSetId = matchingSet.id;
-          setPinSets((current) => current.some((set) => set.id === matchingSet.id) ? current : [...current, matchingSet]);
-        } else {
-          throw setError;
-        }
-      } else {
-        resolvedPinSetId = newSet.id;
-        setPinSets((current) => current.some((set) => set.id === newSet.id) ? current : [...current, newSet]);
-      }
-    }
-  } else {
-    resolvedPinSetId = null;
-  }
-
   // Keep the existing personal photo unless a new one is uploaded.
   let personalPhotoUrl = pin.photoUrl || null;
   let personalPhotoPath = pin.photoPath || null;
@@ -975,31 +828,7 @@ try {
     personalPhotoUrl = null;
   }
 
-  let catalogImagePath = pin.imagePath || null;
-  if (catalogImageFile) {
-    const fileExtension = catalogImageFile.name.split(".").pop()?.toLowerCase() || "jpg";
-    catalogImagePath = `${session.user.id}/${crypto.randomUUID()}.${fileExtension}`;
-    const { error: catalogUploadError } = await supabase.storage.from("pin-images").upload(catalogImagePath, catalogImageFile, {
-      contentType: catalogImageFile.type || "image/jpeg", upsert: false,
-    });
-    if (catalogUploadError) throw catalogUploadError;
-  }
-
-  const { error: pinUpdateError } = await supabase.from("pins").update({
-    name: pinName.trim(),
-    character_name: character.trim() || null,
-    franchise: franchise.trim() || null,
-    park: park.trim() || null,
-    release_year: releaseYear ? Number(releaseYear) : null,
-    edition_type: editionType.trim() || null,
-    description: description.trim() || null,
-    catalog_code: catalogCode.trim() || null,
-    set_number: setNumber.trim() || null,
-    pin_set_id: resolvedPinSetId,
-    image_path: catalogImageFile ? catalogImagePath : (catalogImageUrl.trim() ? null : (pin.imagePath || null)),
-    image_url: catalogImageFile ? null : (catalogImageUrl.trim() || null),
-  }).eq("id", pin.id);
-  if (pinUpdateError) throw pinUpdateError;
+  // Keep the rest of your existing save code below this point.
 
   const { error: updateError } = await supabase
     .from("collection_items")
@@ -1085,26 +914,6 @@ try {
         </div>
 
         <form onSubmit={handleSubmit}>
-          <h3>Catalog information</h3>
-          <label htmlFor="edit-catalog-pin-name">Pin name *</label>
-          <input id="edit-catalog-pin-name" value={pinName} onChange={(e) => setPinName(e.target.value)} required />
-          <label>Characters (separate with commas)<input type="text" value={character} onChange={(event) => setCharacter(event.target.value)} placeholder="e.g. Mickey Mouse, Minnie Mouse, Pluto" /></label>
-          <AutocompleteField label="Franchise" value={franchise} onChange={setFranchise} options={suggestions.map((row) => row.franchise)} />
-          <AutocompleteField label="Disney park" value={park} onChange={setPark} options={suggestions.map((row) => row.park)} />
-          <label htmlFor="edit-catalog-year">Release year</label><input id="edit-catalog-year" type="number" min="1900" max="2100" value={releaseYear} onChange={(e) => setReleaseYear(e.target.value)} />
-          <AutocompleteField label="Edition type" value={editionType} onChange={setEditionType} options={suggestions.map((row) => row.edition_type)} />
-          <label htmlFor="edit-catalog-description">Description</label><textarea id="edit-catalog-description" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-          <AutocompleteField label="Catalog code" value={catalogCode} onChange={setCatalogCode} options={suggestions.map((row) => row.catalog_code)} />
-          <AutocompleteField label="Set number" value={setNumber} onChange={setSetNumber} options={suggestions.map((row) => row.set_number)} />
-          <AutocompleteField
-            label="Set name (optional)"
-            value={pinSetName}
-            onChange={handleSetNameChange}
-            options={pinSets.map((set) => set.name)}
-            placeholder="Type to search shared sets"
-            onSelect={handleSetNameChange}
-          />
-          {pinSets.length > 0 && <small>Suggestions include {pinSets.length} shared set{pinSets.length === 1 ? "" : "s"} contributed by Pinfolio users. Leave this blank if the pin is not part of a set.</small>}
           <label htmlFor="collection-owned">Quantity owned</label>
           <input
             id="collection-owned"
@@ -1128,7 +937,7 @@ try {
             onChange={(event) => setTradeable(event.target.value)}
           />
 
-          <label htmlFor="collection-cost">Total Pin value (optional)</label>
+          <label htmlFor="collection-cost">Total purchase cost (optional)</label>
           <input
             id="collection-cost"
             type="number"
@@ -1180,18 +989,7 @@ try {
           />
 
           
-          <label htmlFor="edit-catalog-image-url">Shared catalog photo URL (optional)</label>
-          <input id="edit-catalog-image-url" type="url" value={catalogImageUrl} onChange={(e) => { setCatalogImageUrl(e.target.value); if (e.target.value.trim()) { setCatalogImageFile(null); setCatalogImagePreview(""); } }} placeholder="https://…" />
-          <label htmlFor="edit-catalog-photo-file">Upload shared catalog photo (shown to catalog users)</label>
-          <input id="edit-catalog-photo-file" type="file" accept="image/*" onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (!file) { setCatalogImageFile(null); setCatalogImagePreview(""); return; }
-            if (!file.type.startsWith("image/")) { setError("Please select an image file."); event.target.value = ""; return; }
-            if (file.size > 5 * 1024 * 1024) { setError("The image must be 5 MB or smaller."); event.target.value = ""; return; }
-            setError(""); setCatalogImageFile(file); setCatalogImagePreview(URL.createObjectURL(file)); setCatalogImageUrl("");
-          }} />
-          {catalogImagePreview && <img src={catalogImagePreview} alt="Shared catalog pin preview" style={{ display: "block", width: "160px", height: "160px", objectFit: "contain", margin: "12px 0" }} />}
-          <label htmlFor="edit-pin-photo">Personal photo (private to your collection, optional)</label>
+          <label htmlFor="edit-pin-photo">Change pin photo (optional)</label>
           <input
             id="edit-pin-photo"
             type="file"
@@ -1304,7 +1102,7 @@ export function EditPinForm({ pin, onClose, onSaved, onRemove }) {
       purchaseCost !== null &&
       (!Number.isFinite(purchaseCost) || purchaseCost < 0)
     ) {
-      setMessage("Enter a valid Pin value.");
+      setMessage("Enter a valid purchase cost.");
       return;
     }
 
@@ -1419,7 +1217,7 @@ export function EditPinForm({ pin, onClose, onSaved, onRemove }) {
             </label>
 
             <label>
-              Pin value (optional)
+              Purchase cost (optional)
               <input
                 type="number"
                 min="0"
@@ -1472,7 +1270,6 @@ export function AuthScreen() {
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -1486,15 +1283,27 @@ export function AuthScreen() {
     }
 
     setLoading(true);
+
     try {
       if (mode === "signup") {
-        const { data, error } = await supabase.auth.signUp({ email, password });
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+        });
+
         if (error) throw error;
-        setMessage(data.session
-          ? "Account created! You're signed in."
-          : "Account created! Check your email for a confirmation link.");
+
+        setMessage(
+          data.session
+            ? "Account created! You're signed in."
+            : "Account created! Check your email for a confirmation link."
+        );
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
         if (error) throw error;
       }
     } catch (error) {
@@ -1504,132 +1313,125 @@ export function AuthScreen() {
     }
   }
 
-  async function handleResetPassword() {
-    setMessage("");
-    if (!supabase) {
-      setMessage("Supabase is not configured.");
-      return;
-    }
-    if (!email.trim()) {
-      setMessage("Enter your email address above first, then choose Forgot password.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const redirectTo = `${window.location.origin}${window.location.pathname}`;
-      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
-      if (error) throw error;
-      setMessage("If an account exists for that email, a password-reset link has been sent. Check your inbox and spam folder.");
-    } catch (error) {
-      setMessage(error.message || "Couldn't send the password-reset email.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#101a30", color: "#f8f2e5", fontFamily: "inherit" }}>
-      <form onSubmit={handleSubmit} style={{ width: "100%", maxWidth: 400, boxSizing: "border-box", padding: 32, borderRadius: 20, background: "#1a2740", border: "1px solid #35415a" }}>
-        <div style={{ color: "#e7c779", fontSize: 14, letterSpacing: 3, marginBottom: 12 }}>✦ PINFOLIO</div>
-        <h1 style={{ marginBottom: 8 }}>{mode === "login" ? "Welcome back" : "Create your account"}</h1>
+    <div style={{
+      minHeight: "100vh",
+      display: "grid",
+      placeItems: "center",
+      padding: 24,
+      background: "#101a30",
+      color: "#f8f2e5",
+      fontFamily: "inherit"
+    }}>
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          width: "100%",
+          maxWidth: 400,
+          boxSizing: "border-box",
+          padding: 32,
+          borderRadius: 20,
+          background: "#1a2740",
+          border: "1px solid #35415a"
+        }}
+      >
+        <div style={{
+          color: "#e7c779",
+          fontSize: 14,
+          letterSpacing: 3,
+          marginBottom: 12
+        }}>
+          ✦ PINFOLIO
+        </div>
+
+        <h1 style={{ marginBottom: 8 }}>
+          {mode === "login" ? "Welcome back" : "Create your account"}
+        </h1>
+
         <p style={{ color: "#b8c0cf", lineHeight: 1.5 }}>
-          {mode === "login" ? "Sign in to access your pin collection." : "Start organizing your collection and wishlist."}
+          {mode === "login"
+            ? "Sign in to access your pin collection."
+            : "Start organizing your collection and wishlist."}
         </p>
 
         <label style={{ display: "block", marginTop: 24 }}>
           Email address
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required style={authInputStyle} />
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoComplete="email"
+            required
+            style={authInputStyle}
+          />
         </label>
 
         <label style={{ display: "block", marginTop: 16 }}>
           Password
-          <span style={{ display: "block", position: "relative", marginTop: 8 }}>
-            <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={8} required style={{ ...authInputStyle, marginTop: 0, paddingRight: 48 }} />
-            <button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"} title={showPassword ? "Hide password" : "Show password"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", color: "#b8c0cf", padding: 8, display: "grid", placeItems: "center", cursor: "pointer" }}>
-              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-            </button>
-          </span>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete={mode === "login" ? "current-password" : "new-password"}
+            minLength={8}
+            required
+            style={authInputStyle}
+          />
         </label>
 
-        {mode === "login" && (
-          <button type="button" onClick={handleResetPassword} disabled={loading} style={{ display: "block", marginTop: 12, padding: 0, border: 0, background: "transparent", color: "#e7c779", textDecoration: "underline", cursor: loading ? "wait" : "pointer", font: "inherit", fontSize: 14 }}>
-            Forgot password?
-          </button>
+        <button
+          type="submit"
+          disabled={loading}
+          style={{
+            width: "100%",
+            marginTop: 24,
+            padding: 13,
+            border: 0,
+            borderRadius: 10,
+            background: "#e7c779",
+            color: "#172039",
+            fontWeight: 700,
+            cursor: loading ? "wait" : "pointer"
+          }}
+        >
+          {loading
+            ? "Please wait..."
+            : mode === "login"
+              ? "Sign in"
+              : "Create account"}
+        </button>
+
+        {message && (
+          <p role="status" style={{
+            marginTop: 16,
+            color: "#f8f2e5",
+            overflowWrap: "anywhere"
+          }}>
+            {message}
+          </p>
         )}
 
-        <button type="submit" disabled={loading} style={{ width: "100%", marginTop: 24, padding: 13, border: 0, borderRadius: 10, background: "#e7c779", color: "#172039", fontWeight: 700, cursor: loading ? "wait" : "pointer" }}>
-          {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"}
+        <button
+          type="button"
+          onClick={() => {
+            setMode(mode === "login" ? "signup" : "login");
+            setMessage("");
+          }}
+          style={{
+            width: "100%",
+            marginTop: 16,
+            padding: 10,
+            border: "1px solid #53617a",
+            borderRadius: 10,
+            background: "transparent",
+            color: "#f8f2e5",
+            cursor: "pointer"
+          }}
+        >
+          {mode === "login"
+            ? "Need an account? Sign up"
+            : "Already have an account? Sign in"}
         </button>
-
-        {message && <p role="status" aria-live="polite" style={{ marginTop: 16, color: "#f8f2e5", overflowWrap: "anywhere", lineHeight: 1.5 }}>{message}</p>}
-
-        <button type="button" onClick={() => { setMode(mode === "login" ? "signup" : "login"); setMessage(""); setPassword(""); setShowPassword(false); }} style={{ width: "100%", marginTop: 16, padding: 10, border: "1px solid #53617a", borderRadius: 10, background: "transparent", color: "#f8f2e5", cursor: "pointer" }}>
-          {mode === "login" ? "Need an account? Sign up" : "Already have an account? Sign in"}
-        </button>
-      </form>
-    </div>
-  );
-}
-
-export function PasswordRecoveryScreen({ onComplete }) {
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [message, setMessage] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setMessage("");
-    if (password.length < 8) {
-      setMessage("Your new password must be at least 8 characters long.");
-      return;
-    }
-    if (password !== confirmPassword) {
-      setMessage("The passwords don't match. Please check them and try again.");
-      return;
-    }
-    if (!supabase) {
-      setMessage("Supabase is not configured.");
-      return;
-    }
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.updateUser({ password });
-      if (error) throw error;
-      setMessage("Your password has been updated. Taking you back to Pinfolio...");
-      window.setTimeout(() => {
-        window.history.replaceState({}, document.title, `${window.location.pathname}${window.location.search}`);
-        onComplete?.();
-      }, 900);
-    } catch (error) {
-      setMessage(error.message || "Couldn't update your password. Please request a new reset link and try again.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "#101a30", color: "#f8f2e5", fontFamily: "inherit" }}>
-      <form onSubmit={handleSubmit} style={{ width: "100%", maxWidth: 400, boxSizing: "border-box", padding: 32, borderRadius: 20, background: "#1a2740", border: "1px solid #35415a" }}>
-        <div style={{ color: "#e7c779", fontSize: 14, letterSpacing: 3, marginBottom: 12 }}>✦ PINFOLIO</div>
-        <h1 style={{ marginBottom: 8 }}>Choose a new password</h1>
-        <p style={{ color: "#b8c0cf", lineHeight: 1.5 }}>Use at least 8 characters. Your new password will replace the old one.</p>
-        <label style={{ display: "block", marginTop: 24 }}>New password
-          <span style={{ display: "block", position: "relative", marginTop: 8 }}>
-            <input type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" minLength={8} required style={{ ...authInputStyle, marginTop: 0, paddingRight: 48 }} />
-            <button type="button" onClick={() => setShowPassword((visible) => !visible)} aria-label={showPassword ? "Hide password" : "Show password"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", color: "#b8c0cf", padding: 8, display: "grid", placeItems: "center", cursor: "pointer" }}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
-          </span>
-        </label>
-        <label style={{ display: "block", marginTop: 16 }}>Confirm new password
-          <span style={{ display: "block", position: "relative", marginTop: 8 }}>
-            <input type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} autoComplete="new-password" minLength={8} required style={{ ...authInputStyle, marginTop: 0, paddingRight: 48 }} />
-            <button type="button" onClick={() => setShowConfirmPassword((visible) => !visible)} aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"} style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", color: "#b8c0cf", padding: 8, display: "grid", placeItems: "center", cursor: "pointer" }}>{showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button>
-          </span>
-        </label>
-        <button type="submit" disabled={loading} style={{ width: "100%", marginTop: 24, padding: 13, border: 0, borderRadius: 10, background: "#e7c779", color: "#172039", fontWeight: 700, cursor: loading ? "wait" : "pointer" }}>{loading ? "Updating password..." : "Update password"}</button>
-        {message && <p role="status" aria-live="polite" style={{ marginTop: 16, color: "#f8f2e5", overflowWrap: "anywhere", lineHeight: 1.5 }}>{message}</p>}
       </form>
     </div>
   );
@@ -1647,3 +1449,5 @@ export const authInputStyle = {
   color: "#ffffff",
   fontSize: 16
 };
+
+
