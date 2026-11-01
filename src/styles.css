@@ -999,3 +999,48 @@ button:focus-visible, input:focus-visible { outline: 3px solid #d7b66a; outline-
 .catalog-community-auth strong { font-size: .78rem; }
 .catalog-community-auth span { line-height: 1.35; }
 .catalog-community-auth small, .catalog-community-auth-empty { font-size: .7rem; opacity: .75; }
+
+/* Duplicate merge picker: compact horizontal rows with reliable image sizing. */
+.pin-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.pin-card-actions .button { width: 100%; min-width: 0; }
+.pin-card-merge-button { border-color: var(--accent, #4775bd); }
+.merge-candidate-list { display: grid; gap: 8px; }
+.merge-candidate-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; gap: 12px; align-items: center; width: 100%; padding: 10px; border: 1px solid var(--border, #d8dce5); border-radius: 12px; background: var(--panel, #fff); color: inherit; text-align: left; cursor: pointer; }
+.merge-candidate-row:hover:not(:disabled) { border-color: var(--accent, #4775bd); }
+.merge-candidate-row:disabled { cursor: wait; opacity: .7; }
+.merge-candidate-photo { display: grid; place-items: center; width: 76px; height: 76px; overflow: hidden; border-radius: 9px; background: var(--surface, #f3f4f6); color: var(--muted, #7b8190); }
+.merge-candidate-photo img { display: block; width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+.merge-candidate-details { display: grid; gap: 4px; min-width: 0; }
+.merge-candidate-details strong { overflow-wrap: anywhere; }
+.merge-candidate-details span, .merge-candidate-details small { color: var(--muted, #737987); font-size: 12px; }
+.merge-candidate-action { white-space: nowrap; }
+@media (max-width: 560px) {
+  .merge-candidate-row { grid-template-columns: 60px minmax(0, 1fr); gap: 9px; }
+  .merge-candidate-photo { width: 60px; height: 60px; }
+  .merge-candidate-action { grid-column: 2; justify-self: start; }
+}
+
+/* Catalog-level duplicate merge panel */
+.catalog-merge-panel { margin: 18px 0; }
+.catalog-merge-panel .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.catalog-merge-content { display: grid; gap: 10px; margin-top: 16px; }
+.catalog-merge-content > label { font-weight: 650; }
+.catalog-merge-content > select, .catalog-merge-content > input { width: 100%; min-width: 0; }
+.catalog-merge-source-row { display: flex; align-items: center; gap: 12px; padding: 10px; border: 1px solid var(--border, #d8dce5); border-radius: 12px; }
+.catalog-merge-source-row > span:last-child { display: grid; gap: 4px; }
+.catalog-merge-source-row small { color: var(--muted, #737987); }
+.catalog-merge-candidates { margin-top: 4px; }
+.catalog-merge-candidates .merge-candidate-row { grid-template-columns: 76px minmax(0, 1fr) auto; }
+.catalog-merge-candidates .merge-candidate-photo img { object-fit: contain; }
+@media (max-width: 560px) {
+  .catalog-merge-panel .panel-heading { align-items: flex-start; flex-direction: column; }
+  .catalog-merge-candidates .merge-candidate-row { grid-template-columns: 60px minmax(0, 1fr); }
+}
+
+/* Merge duplicate entries directly from the shared public catalog pin editor. */
+.catalog-edit-merge { grid-column: 1 / -1; margin-top: 6px; padding: 16px; border: 1px solid var(--border, #d8dce5); border-radius: 14px; background: var(--panel-muted, rgba(127,127,127,.06)); }
+.catalog-edit-merge h3 { margin: 0 0 8px; }
+.catalog-edit-merge p { margin: 0 0 12px; color: var(--muted, #667085); line-height: 1.45; }
+.catalog-edit-merge-picker { display: grid; gap: 10px; margin-top: 14px; }
+.catalog-edit-merge-picker > input { width: 100%; min-width: 0; }
+.catalog-edit-merge-picker .merge-candidate-list { max-height: 330px; overflow-y: auto; }

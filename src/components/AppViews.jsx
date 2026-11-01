@@ -73,7 +73,7 @@ export function AuthenticityBadge({ status }) {
   return <span className={`authenticity-badge authenticity-${value}`} title="Personal authenticity assessment, not an official authentication">{labels[value] || value.replaceAll("_", " ")}</span>;
 }
 
-export function PinCard({ pin, onClick, onEdit }) {
+export function PinCard({ pin, onClick, onEdit, onMerge }) {
   return (
     <article className="pin-card">
       <button
@@ -105,16 +105,29 @@ export function PinCard({ pin, onClick, onEdit }) {
           )}
         </div>
 
-        <button
-          type="button"
-          className="button button-secondary"
-          onClick={(event) => {
-            event.stopPropagation();
-            onEdit?.();
-          }}
-        >
-          Edit
-        </button>
+        <div className="pin-card-actions">
+          <button
+            type="button"
+            className="button button-secondary"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEdit?.();
+            }}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="button button-secondary pin-card-merge-button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onMerge?.();
+            }}
+            title="Find and merge a duplicate catalog pin"
+          >
+            Merge
+          </button>
+        </div>
       </div>
     </article>
   );
@@ -141,16 +154,16 @@ export function Dashboard({ setPage, pins = [], wishlistItems = [], loading = fa
       </div>
       <div className="stat-grid">
         <StatCard icon={GalleryVerticalEnd} label="Pins owned" value={loading ? "…" : owned} note={`${pins.length} unique designs`} tone="tone-blue" />
-        <StatCard icon={ChartNoAxesCombined} label="Pin Value" value={loading ? "…" : `$${costTotal.toFixed(2)}`} note="Shared catalog value × copies owned" tone="tone-gold" />
+        <StatCard icon={ChartNoAxesCombined} label="Recorded cost" value={loading ? "…" : `$${costTotal.toFixed(2)}`} note="Shared pin value × copies owned" tone="tone-gold" />
         <StatCard icon={Layers3} label="Collections / sets" value={loading ? "…" : setCount} note="Distinct catalog groups" tone="tone-purple" />
         <StatCard icon={Repeat2} label="Tradeable copies" value={loading ? "…" : tradeable} note="Marked available to trade" tone="tone-green" />
       </div>
       <div className="content-grid dashboard-grid">
         <section className="panel"><div className="panel-heading"><div><h2>Recently added</h2><p>Your latest collection finds</p></div><button className="text-link" onClick={() => setPage("Collection")}>View collection <ChevronRight size={15} /></button></div>
-          {loading ? <p>Loading your collection…</p> : pins.length === 0 ? <div className="empty-state"><h3>Your collection starts here</h3><p>Add your first pin to begin tracking your collection.</p><button className="button button-secondary" onClick={() => setPage("Collection")}>Add a pin</button></div> : <div className="recent-list">{pins.slice(0,3).map(pin => <div className="recent-row" key={pin.collectionItemId || pin.id}><PinArt pin={pin} small /><div className="recent-copy"><strong>{pin.name}</strong><span>{pin.set}</span><AuthenticityBadge status={pin.authenticityStatus} /></div><span className="quantity">×{pin.owned}</span></div>)}</div>}
+          {loading ? <p>Loading your collection…</p> : pins.length === 0 ? <div className="empty-state"><h3>Your collection starts here</h3><p>Add your first pin to begin tracking your collection.</p><button className="button button-secondary" onClick={() => setPage("Collection")}>Add a pin</button></div> : <div className="recent-list">{[...pins].sort((a,b) => a.name.localeCompare(b.name, undefined, {sensitivity:"base"})).slice(0,3).map(pin => <div className="recent-row" key={pin.collectionItemId || pin.id}><PinArt pin={pin} small /><div className="recent-copy"><strong>{pin.name}</strong><span>{pin.set}</span><AuthenticityBadge status={pin.authenticityStatus} /></div><span className="quantity">×{pin.owned}</span></div>)}</div>}
         </section>
         <section className="panel wishlist-panel"><div className="panel-heading"><div><h2>Wishlist</h2><p>Your next pin finds</p></div><Heart size={19} className="muted-icon" /></div>
-          {loading ? <p>Loading wishlist…</p> : wishlistItems.length === 0 ? <p>Your wishlist is empty. Add pins you hope to find.</p> : wishlistItems.slice(0,4).map(item => <div className="match-row" key={item.id}><div className="match-check"><Heart size={15} /></div><div className="match-copy"><strong>{item.name}</strong><span>{item.priority || "Medium"} priority</span></div></div>)}
+          {loading ? <p>Loading wishlist…</p> : wishlistItems.length === 0 ? <p>Your wishlist is empty. Add pins you hope to find.</p> : [...wishlistItems].sort((a,b) => (a.name || "").localeCompare(b.name || "", undefined, {sensitivity:"base"})).slice(0,4).map(item => <div className="match-row" key={item.id}><div className="match-check"><Heart size={15} /></div><div className="match-copy"><strong>{item.name}</strong><span>{item.priority || "Medium"} priority</span></div></div>)}
           <button className="button button-secondary button-wide" onClick={() => setPage("Wishlist")}>Open wishlist <ArrowUpRight size={16} /></button>
           {matches.length > 0 && <p className="subtle-count">{matches.length} wishlist item(s) also appear in your collection.</p>}
         </section>
@@ -167,10 +180,48 @@ export function Collection({
   loading,
   onAddPin,
   onEditPin,
+  onSetUpdated,
 }) {
   const [filter, setFilter] = useState("All pins");
   const [authFilter, setAuthFilter] = useState("all");
-  const [sortBy, setSortBy] = useState("recent");
+  const [sortBy, setSortBy] = useState("name-asc");
+  const [showSetManager, setShowSetManager] = useState(false);
+  const [setManagerItems, setSetManagerItems] = useState([]);
+  const [setManagerLoading, setSetManagerLoading] = useState(false);
+  const [setManagerError, setSetManagerError] = useState("");
+  const [setManagerSaving, setSetManagerSaving] = useState("");
+  const [setNameDrafts, setSetNameDrafts] = useState({});
+
+  async function openSetManager() {
+    setShowSetManager(true);
+    setSetManagerError("");
+    setSetManagerLoading(true);
+    if (!supabase) { setSetManagerError("Connect Supabase to edit shared sets."); setSetManagerLoading(false); return; }
+    const { data, error } = await supabase.from("pin_sets").select("id,name,franchise,release_year").order("name");
+    if (error) { setSetManagerError(error.message || "Could not load sets."); setSetManagerItems([]); }
+    else {
+      const ownedSetIds = new Set(pins.map((pin) => String(pin.pinSetId || "")).filter(Boolean));
+      const visibleSets = (data || []).filter((set) => ownedSetIds.has(String(set.id)));
+      setSetManagerItems(visibleSets);
+      setSetNameDrafts(Object.fromEntries(visibleSets.map((set) => [set.id, set.name])));
+    }
+    setSetManagerLoading(false);
+  }
+
+  async function saveSetName(set) {
+    const nextName = String(setNameDrafts[set.id] || "").trim();
+    if (!nextName) { setSetManagerError("Set name cannot be blank."); return; }
+    if (nextName === set.name) return;
+    if (!supabase) { setSetManagerError("Connect Supabase to edit shared sets."); return; }
+    setSetManagerSaving(set.id);
+    setSetManagerError("");
+    const { error } = await supabase.from("pin_sets").update({ name: nextName }).eq("id", set.id);
+    if (error) { setSetManagerError(error.message || "Could not update this set. Check your Supabase permissions."); setSetManagerSaving(""); return; }
+    setSetManagerItems((current) => current.map((item) => item.id === set.id ? { ...item, name: nextName } : item));
+    onSetUpdated?.();
+    setSetManagerSaving("");
+  }
+
   const filtered = useMemo(() => pins.filter(p => {
     const matchesSearch = `${p.name} ${p.character} ${p.set} ${p.franchise || ""} ${p.park || ""}`.toLowerCase().includes(search.toLowerCase());
     const matchesFilter = filter === "All pins" || (filter === "Tradeable" && p.tradeable > 0) || (filter === "Duplicates" && p.owned > 1) || (filter === "Private" && p.visibility === "private") || (filter === "Friends" && p.visibility === "friends") || (filter === "Public" && p.visibility === "public");
@@ -183,7 +234,7 @@ export function Collection({
     if (sortBy === "year-old") return (Number(a.releaseYear) || 9999) - (Number(b.releaseYear) || 9999) || a.name.localeCompare(b.name);
     if (sortBy === "quantity") return (Number(b.owned) || 0) - (Number(a.owned) || 0);
     if (sortBy === "tradeable") return (Number(b.tradeable) || 0) - (Number(a.tradeable) || 0);
-    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+    return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
   }), [pins, search, filter, authFilter, sortBy]);
   return (
     <>
@@ -197,6 +248,9 @@ export function Collection({
       <button className="button button-gold mobile-add-pin" type="button" onClick={onAddPin}>
         + Add pin
       </button>
+      <div className="collection-set-actions" style={{ display: "flex", justifyContent: "flex-end", margin: "0 0 12px" }}>
+        <button className="button button-secondary" type="button" onClick={openSetManager}>Edit sets</button>
+      </div>
       <div className="toolbar">
         <div className="search-box"><Search size={17} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search pins, characters, sets..." /></div>
         <label className="toolbar-select"><SlidersHorizontal size={15}/><span className="sr-only">Sort collection</span><select value={sortBy} onChange={e => setSortBy(e.target.value)} aria-label="Sort collection"><option value="recent">Recently added</option><option value="name-asc">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="year-new">Release year: newest</option><option value="year-old">Release year: oldest</option><option value="quantity">Most owned</option><option value="tradeable">Most tradeable</option></select></label>
@@ -215,10 +269,24 @@ export function Collection({
             pin={pin}
             onClick={() => setSelectedPin(pin)}
             onEdit={() => onEditPin(pin)}
+            onMerge={() => onEditPin({ ...pin, openMerge: true })}
           />
         ))}
         </div>
       )}
+      {showSetManager && <div className="modal-backdrop" onClick={() => setShowSetManager(false)}>
+        <div className="modal" role="dialog" aria-modal="true" aria-labelledby="collection-set-manager-title" onClick={(event) => event.stopPropagation()}>
+          <div className="modal-header"><div><span className="eyebrow">YOUR COLLECTION</span><h2 id="collection-set-manager-title">Edit sets</h2><p>Rename a set shared by the pins in your collection.</p></div><button type="button" className="icon-button" onClick={() => setShowSetManager(false)} aria-label="Close set editor"><X size={18}/></button></div>
+          {setManagerError && <p role="alert" className="form-error">{setManagerError}</p>}
+          {setManagerLoading ? <p>Loading sets…</p> : setManagerItems.length === 0 ? <p>No sets linked to your collection yet. You can assign a set while editing an individual pin.</p> : <div style={{ display: "grid", gap: 12 }}>
+            {setManagerItems.map((set) => <div key={set.id} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) auto", gap: 8, alignItems: "end" }}>
+              <label style={{ minWidth: 0 }}>Set name<input value={setNameDrafts[set.id] ?? set.name} onChange={(event) => setSetNameDrafts((current) => ({ ...current, [set.id]: event.target.value }))} /></label>
+              <button className="button button-secondary" type="button" disabled={setManagerSaving === set.id || (setNameDrafts[set.id] || "").trim() === set.name} onClick={() => saveSetName(set)}>{setManagerSaving === set.id ? "Saving…" : "Save"}</button>
+            </div>)}
+          </div>}
+          <p className="subtle-count" style={{ marginTop: 14 }}>Renaming a shared set updates its name for everyone who uses it. To change which set a pin belongs to, open that pin’s Edit option in Collection.</p>
+        </div>
+      </div>}
       <p className="demo-footnote"><LockKeyhole size={14} /> Sharing is controlled by each pin’s visibility setting and enforced by Supabase row-level security.</p>
     </>
   );
@@ -529,7 +597,7 @@ export function Traders() {
 
       <section className="panel" style={{ marginBottom: 20 }}>
         <div className="panel-heading"><div><h2>Wishlist matches</h2><p>Friends currently have pins on your wishlist available to trade.</p></div><Heart size={19} /></div>
-        {wishlistMatches.length === 0 ? <p className="subtle-count">No matches yet. Add pins to your wishlist and ask friends to share tradeable copies.</p> : <div className="recent-list">{wishlistMatches.map((match) => <div className="recent-row" key={`${match.owner_id}-${match.pin_id}`}><div className="recent-copy"><strong>{match.pin_name}</strong><span>{match.franchise || match.park || "Pin collection"} · {match.tradeable_quantity} tradeable</span><span className="subtle-count">@{match.username || match.display_name || "friend"} · {match.priority || "normal"} priority</span></div></div>)}</div>}
+        {wishlistMatches.length === 0 ? <p className="subtle-count">No matches yet. Add pins to your wishlist and ask friends to share tradeable copies.</p> : <div className="recent-list">{[...wishlistMatches].sort((a,b) => (a.pin_name || "").localeCompare(b.pin_name || "", undefined, {sensitivity:"base"})).map((match) => <div className="recent-row" key={`${match.owner_id}-${match.pin_id}`}><div className="recent-copy"><strong>{match.pin_name}</strong><span>{match.franchise || match.park || "Pin collection"} · {match.tradeable_quantity} tradeable</span><span className="subtle-count">@{match.username || match.display_name || "friend"} · {match.priority || "normal"} priority</span></div></div>)}</div>}
       </section>
       <section className="panel trader-search-panel">
         <div className="panel-heading"><div><h2>Find a trader</h2><p>Search by their unique Pinfolio username.</p></div><Search size={20} /></div>
@@ -552,7 +620,7 @@ export function Traders() {
 
       <section className="panel" style={{ marginTop: 20 }}>
         <div className="panel-heading"><div><h2>Your friends</h2><p>{friends.length} accepted {friends.length === 1 ? "connection" : "connections"}</p></div><ShieldCheck size={20} /></div>
-        {loading ? <p>Loading friends…</p> : friends.length === 0 ? <p>Once someone accepts your friend request, their shared trader pins will appear here.</p> : <div className="friend-strip">{friends.map(friend => <div className="friend-chip" key={friend.id}><div className="avatar">{friend.avatar_url ? <img src={friend.avatar_url} alt="" /> : (friend.display_name || friend.username || "P").slice(0,1).toUpperCase()}</div><div><strong>{friend.display_name || friend.username}</strong><span>@{friend.username}</span></div></div>)}</div>}
+        {loading ? <p>Loading friends…</p> : friends.length === 0 ? <p>Once someone accepts your friend request, their shared trader pins will appear here.</p> : <div className="friend-strip">{[...friends].sort((a,b) => (a.display_name || a.username || "").localeCompare(b.display_name || b.username || "", undefined, {sensitivity:"base"})).map(friend => <div className="friend-chip" key={friend.id}><div className="avatar">{friend.avatar_url ? <img src={friend.avatar_url} alt="" /> : (friend.display_name || friend.username || "P").slice(0,1).toUpperCase()}</div><div><strong>{friend.display_name || friend.username}</strong><span>@{friend.username}</span></div></div>)}</div>}
       </section>
 
       <section className="panel" style={{ marginTop: 20 }}>
@@ -561,7 +629,7 @@ export function Traders() {
       </section>
 
       <div className="trader-heading"><h2>Available to trade</h2><span className="subtle-count">Shared by your friends</span></div>
-      {loading ? <p>Loading shared pins…</p> : traderPins.length === 0 ? <div className="empty-state"><h3>No shared pins yet</h3><p>Ask a friend to set one of their collection pins to “Friends” or “Public” visibility and mark at least one copy tradeable.</p></div> : <div className="pin-grid">{traderPins.map(listing => <article className="pin-card trader-card" key={listing.id}><div className="pin-image-button"><PinArt pin={{ name: listing.name, imageUrl: listing.imageUrl }} /><span className="trade-badge">Tradeable ×{listing.quantity}</span></div><div className="pin-card-body"><div className="pin-card-title">{listing.name}</div><div className="pin-card-subtitle">{listing.set}</div><div className="owner-row"><div className="avatar avatar-small">{listing.owner?.avatar_url ? <img src={listing.owner.avatar_url} alt="" /> : (listing.owner?.display_name || listing.owner?.username || "P").slice(0,1).toUpperCase()}</div><span>@{listing.owner?.username || "trader"}</span></div><button className="button button-secondary button-wide" onClick={() => { setOfferListing(listing); setOfferPinView("collection"); setOfferPinId(""); setOfferSelections([]); setRequestSelections([{ pin_id: listing.pinId, quantity: 1 }]); setOfferQuantity("1"); setRequestQuantity("1"); setOfferMessage(""); }}>Propose trade <ArrowRightLeft size={15} /></button></div></article>)}</div>}
+      {loading ? <p>Loading shared pins…</p> : traderPins.length === 0 ? <div className="empty-state"><h3>No shared pins yet</h3><p>Ask a friend to set one of their collection pins to “Friends” or “Public” visibility and mark at least one copy tradeable.</p></div> : <div className="pin-grid">{[...traderPins].sort((a,b) => (a.name || "").localeCompare(b.name || "", undefined, {sensitivity:"base"})).map(listing => <article className="pin-card trader-card" key={listing.id}><div className="pin-image-button"><PinArt pin={{ name: listing.name, imageUrl: listing.imageUrl }} /><span className="trade-badge">Tradeable ×{listing.quantity}</span></div><div className="pin-card-body"><div className="pin-card-title">{listing.name}</div><div className="pin-card-subtitle">{listing.set}</div><div className="owner-row"><div className="avatar avatar-small">{listing.owner?.avatar_url ? <img src={listing.owner.avatar_url} alt="" /> : (listing.owner?.display_name || listing.owner?.username || "P").slice(0,1).toUpperCase()}</div><span>@{listing.owner?.username || "trader"}</span></div><button className="button button-secondary button-wide" onClick={() => { setOfferListing(listing); setOfferPinView("collection"); setOfferPinId(""); setOfferSelections([]); setRequestSelections([{ pin_id: listing.pinId, quantity: 1 }]); setOfferQuantity("1"); setRequestQuantity("1"); setOfferMessage(""); }}>Propose trade <ArrowRightLeft size={15} /></button></div></article>)}</div>}
 
       <section className="panel" style={{ marginTop: 24 }}>
         <div className="panel-heading"><div><h2>Trade history</h2><p>Active proposals and completed or declined trades.</p></div><ArrowRightLeft size={20} /></div>
@@ -640,7 +708,7 @@ export function Wishlist({
         </div>
       ) : (
         <div className="wishlist-list">
-          {wishlistItems.map((item) => (
+          {[...wishlistItems].sort((a,b) => (a.name || "").localeCompare(b.name || "", undefined, {sensitivity:"base"})).map((item) => (
             <div className="wishlist-item" key={item.id}>
               {item.imageUrl ? (
                 <img

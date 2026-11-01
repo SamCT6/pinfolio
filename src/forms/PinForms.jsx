@@ -854,6 +854,12 @@ export function EditCollectionForm({ pin, session, onClose, onSaved }) {
   const [catalogImageUrl, setCatalogImageUrl] = useState(pin.catalogImageUrl || "");
   const [pinSets, setPinSets] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
+  const [showMergePins, setShowMergePins] = useState(Boolean(pin.openMerge));
+  const [mergeSearch, setMergeSearch] = useState("");
+  const [mergeCandidates, setMergeCandidates] = useState([]);
+  const [loadingMergeCandidates, setLoadingMergeCandidates] = useState(false);
+  const [mergingPinId, setMergingPinId] = useState("");
+  const [mergeMessage, setMergeMessage] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -883,6 +889,65 @@ export function EditCollectionForm({ pin, session, onClose, onSaved }) {
     if (match?.franchise) setFranchise(match.franchise);
     if (match?.release_year) setReleaseYear(String(match.release_year));
   }
+
+  async function openMergePins() {
+    const nextOpen = !showMergePins;
+    setShowMergePins(nextOpen);
+    setMergeMessage("");
+    if (!nextOpen || mergeCandidates.length) return;
+    if (!supabase) { setMergeMessage("Connect Supabase to find duplicate pins."); return; }
+    setLoadingMergeCandidates(true);
+    const { data, error } = await supabase
+      .from("pins")
+      .select("id,name,character_name,franchise,park,release_year,edition_type,image_url,image_path,catalog_code,pin_set_id")
+      .neq("id", pin.id)
+      .order("name", { ascending: true })
+      .limit(5000);
+    if (error) {
+      setMergeMessage(error.message || "Could not load other pins.");
+    } else {
+      const candidatesWithImages = await Promise.all((data || []).map(async (candidate) => {
+        let imageUrl = candidate.image_url || "";
+        if (candidate.image_path && !imageUrl) {
+          const { data: signedData, error: signedError } = await supabase.storage
+            .from("pin-images")
+            .createSignedUrl(candidate.image_path, 60 * 60);
+          if (!signedError && signedData?.signedUrl) imageUrl = signedData.signedUrl;
+        }
+        return { ...candidate, resolvedImageUrl: imageUrl };
+      }));
+      setMergeCandidates(candidatesWithImages);
+    }
+    setLoadingMergeCandidates(false);
+  }
+
+  async function mergeIntoPin(target) {
+    if (!supabase || !session?.user?.id || !target?.id || mergingPinId) return;
+    const confirmed = window.confirm(`Merge “${pin.name}” into “${target.name}”?\n\nThe selected pin will remain as the shared catalog entry. Collection quantities, wishlists, trade records, and exchange history will be moved to it. This cannot be automatically undone.`);
+    if (!confirmed) return;
+    setMergingPinId(target.id);
+    setMergeMessage("");
+    try {
+      const { error } = await supabase.rpc("merge_catalog_pins", {
+        p_source_pin_id: pin.id,
+        p_target_pin_id: target.id,
+      });
+      if (error) throw error;
+      setMergeMessage(`Merged into “${target.name}”. Refreshing your collection…`);
+      onSaved();
+    } catch (error) {
+      const detail = error?.message || error?.details || error?.hint || "Unknown Supabase error";
+      setMergeMessage(`Merge failed: ${detail}`);
+      window.alert(`Pinfolio could not merge these pins.\n\n${detail}\n\nCheck the merge_catalog_pins SQL function and your Supabase permissions.`);
+    } finally {
+      setMergingPinId("");
+    }
+  }
+
+  const visibleMergeCandidates = mergeCandidates.filter((candidate) => {
+    const query = mergeSearch.trim().toLowerCase();
+    return !query || `${candidate.name} ${candidate.character_name || ""} ${candidate.franchise || ""} ${candidate.park || ""} ${candidate.catalog_code || ""} ${candidate.release_year || ""}`.toLowerCase().includes(query);
+  });
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -1260,6 +1325,33 @@ try {
             />
           )}
 
+          <section className="panel" style={{ marginTop: 18, padding: 16 }} aria-labelledby="merge-duplicate-title">
+            <h3 id="merge-duplicate-title" style={{ marginTop: 0 }}>Duplicate pin?</h3>
+            <p style={{ marginTop: 0 }}>If this is the same design as another catalog entry, find it here and merge the two entries.</p>
+            <button type="button" className="button button-secondary button-wide" onClick={openMergePins} disabled={saving || Boolean(mergingPinId)}>
+              {showMergePins ? "Hide other pins" : "Find a pin to merge with"}
+            </button>
+            {showMergePins && <div style={{ marginTop: 14 }}>
+              <label htmlFor="merge-pin-search">Search other pins</label>
+              <input id="merge-pin-search" value={mergeSearch} onChange={(event) => setMergeSearch(event.target.value)} placeholder="Search by name, character, set, or code…" />
+              {loadingMergeCandidates ? <p>Loading other pins…</p> : <>
+                <p className="subtle-count">Select the card for the pin you want to keep. The current pin will be merged into it.</p>
+                <div className="merge-candidate-list" style={{ marginTop: 12 }}>
+                  {visibleMergeCandidates.map((candidate) => {
+                    const candidateImage = candidate.resolvedImageUrl || candidate.image_url || "";
+                    return <button key={candidate.id} type="button" className="merge-candidate-row" onClick={() => mergeIntoPin(candidate)} disabled={Boolean(mergingPinId)}>
+                      <span className="merge-candidate-photo">{candidateImage ? <img src={candidateImage} alt={candidate.name} loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : <span aria-hidden="true">✦</span>}</span>
+                      <span className="merge-candidate-details"><strong>{candidate.name}</strong><span>{[candidate.character_name, candidate.release_year, candidate.park].filter(Boolean).join(" · ") || candidate.franchise || "Disney pin"}</span>{candidate.catalog_code && <small>{candidate.catalog_code}</small>}</span>
+                      <span className="button button-gold merge-candidate-action">{mergingPinId === candidate.id ? "Merging…" : "Keep this pin"}</span>
+                    </button>;
+                  })}
+                </div>
+                {!visibleMergeCandidates.length && <p>No other pins match that search.</p>}
+              </>}
+            </div>}
+            {mergeMessage && <p role="status" style={{ marginBottom: 0 }}>{mergeMessage}</p>}
+            <small style={{ display: "block", marginTop: 10, opacity: 0.75 }}>Merging changes the shared catalog for all users and cannot be automatically undone.</small>
+          </section>
 
           {error && <p role="alert">{error}</p>}
 
