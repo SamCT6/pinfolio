@@ -178,6 +178,7 @@ useEffect(() => {
           image_path,
           catalog_code,
           set_number,
+          catalog_value,
           pin_set_id,
           pin_set:pin_sets(name)
         )
@@ -266,6 +267,7 @@ useEffect(() => {
           image_path,
           catalog_code,
           set_number,
+          catalog_value,
           pin_set_id,
           pin_set:pin_sets(name)
         )
@@ -300,6 +302,7 @@ useEffect(() => {
         description: item.pin.description || "",
         catalogCode: item.pin.catalog_code || "",
         setNumber: item.pin.set_number || "",
+        catalogValue: item.pin.catalog_value,
         pinSetId: item.pin.pin_set_id || "",
         imagePath: item.pin.image_path || null,
         catalogImageUrl: item.pin.image_url || "",

@@ -141,7 +141,7 @@ export function Dashboard({ setPage, pins = [], wishlistItems = [], loading = fa
       </div>
       <div className="stat-grid">
         <StatCard icon={GalleryVerticalEnd} label="Pins owned" value={loading ? "…" : owned} note={`${pins.length} unique designs`} tone="tone-blue" />
-        <StatCard icon={ChartNoAxesCombined} label="Recorded cost" value={loading ? "…" : `$${costTotal.toFixed(2)}`} note="Shared pin value × copies owned" tone="tone-gold" />
+        <StatCard icon={ChartNoAxesCombined} label="Pin Value" value={loading ? "…" : `$${costTotal.toFixed(2)}`} note="Shared catalog value × copies owned" tone="tone-gold" />
         <StatCard icon={Layers3} label="Collections / sets" value={loading ? "…" : setCount} note="Distinct catalog groups" tone="tone-purple" />
         <StatCard icon={Repeat2} label="Tradeable copies" value={loading ? "…" : tradeable} note="Marked available to trade" tone="tone-green" />
       </div>

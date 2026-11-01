@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Search, Upload, Layers3, CircleHelp, CheckCircle2, Image as ImageIcon } from "lucide-react";
+import { Search, Upload, Layers3, CircleHelp, CheckCircle2, Image as ImageIcon, Heart, ArrowUpDown } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 function parseCsv(text) {
@@ -41,26 +41,58 @@ export default function Catalog({ userId }) {
   const [sets, setSets] = useState([]);
   const [pins, setPins] = useState([]);
   const [ownedIds, setOwnedIds] = useState(new Set());
+  const [collectionValues, setCollectionValues] = useState(new Map());
+  const [savingValueId, setSavingValueId] = useState(null);
+  const [wishlistedIds, setWishlistedIds] = useState(new Set());
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("name-asc");
+  const [yearFilter, setYearFilter] = useState("all");
+  const [authFilter, setAuthFilter] = useState("all");
+  const [authByPinId, setAuthByPinId] = useState(new Map());
+  const [communityAuthByPinId, setCommunityAuthByPinId] = useState(new Map());
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [selectedPin, setSelectedPin] = useState(null);
+  const [bulkSearch, setBulkSearch] = useState("");
+  const [bulkOnlyMissing, setBulkOnlyMissing] = useState(false);
+  const [bulkSelected, setBulkSelected] = useState(new Set());
+  const [bulkDrafts, setBulkDrafts] = useState(new Map());
+  const [savingBulk, setSavingBulk] = useState(false);
 
   async function loadCatalog() {
     if (!supabase) { setLoading(false); return; }
     setLoading(true); setError("");
     try {
-      const [setRows, pinRows, inventory] = await Promise.all([
+      const [setRows, pinRows, inventoryResult, wishlistResult] = await Promise.all([
         fetchAll("pin_sets", "id, name, franchise, release_year, image_url, description"),
-        fetchAll("pins", "id, name, description, character_name, franchise, park, release_year, edition_type, image_url, catalog_code, pin_set_id, set_number, is_catalog, catalog_value"),
-        fetchAll("collection_items", "pin_id, owned_quantity").then(rows => rows.filter(row => Number(row.owned_quantity) > 0)),
+        fetchAll("pins", "id, name, description, character_name, franchise, park, release_year, edition_type, image_url, image_path, catalog_code, pin_set_id, set_number, is_catalog, catalog_value, authenticity_status"),
+        supabase.from("collection_items").select("id, pin_id, owned_quantity, purchase_cost, authenticity_status, created_at").eq("user_id", userId || "00000000-0000-0000-0000-000000000000"),
+        userId ? supabase.from("wishlist_items").select("pin_id").eq("user_id", userId) : Promise.resolve({ data: [], error: null }),
       ]);
+      if (inventoryResult.error) throw inventoryResult.error;
+      if (wishlistResult.error) throw wishlistResult.error;
+      const resolvedPins = await Promise.all((pinRows || []).map(async (pin) => {
+        let displayImageUrl = pin.image_url || null;
+        if (pin.image_path && supabase?.storage) {
+          const { data: signed, error: signedError } = await supabase.storage.from("pin-images").createSignedUrl(pin.image_path, 60 * 60);
+          if (!signedError && signed?.signedUrl) displayImageUrl = signed.signedUrl;
+        }
+        return { ...pin, display_image_url: displayImageUrl };
+      }));
       setSets(setRows);
-      setPins(pinRows);
-      setOwnedIds(new Set(inventory.map(row => row.pin_id)));
+      setPins(resolvedPins);
+      setBulkDrafts(new Map((pinRows || []).map(pin => [pin.id, pin.catalog_value == null ? "" : String(pin.catalog_value)])));
+      setBulkSelected(new Set());
+      const inventoryRows = inventoryResult.data || [];
+      setOwnedIds(new Set(inventoryRows.filter(row => Number(row.owned_quantity) > 0).map(row => row.pin_id)));
+      const valueMap = new Map();
+      inventoryRows.forEach(row => { if (Number(row.owned_quantity) > 0 && !valueMap.has(row.pin_id)) valueMap.set(row.pin_id, { id: row.id, value: row.purchase_cost == null ? "" : String(row.purchase_cost) }); });
+      setCollectionValues(valueMap);
+      // Authenticity is a shared catalog property, set by the person who creates the catalog pin.
+      setAuthByPinId(new Map((pinRows || []).map(pin => [pin.id, pin.authenticity_status || "unknown"])));
+      setWishlistedIds(new Set((wishlistResult.data || []).map(row => row.pin_id)));
     } catch (e) { setError(e.message || "Could not load the pin catalog."); }
     finally { setLoading(false); }
   }
@@ -76,8 +108,17 @@ export default function Catalog({ userId }) {
     if (filter === "standalone" && pin.pin_set_id) return false;
     if (filter === "owned" && !ownedIds.has(pin.id)) return false;
     if (filter === "missing" && ownedIds.has(pin.id)) return false;
+    if (yearFilter !== "all" && String(pin.release_year || "") !== yearFilter) return false;
+    if (authFilter !== "all" && (authByPinId.get(pin.id) || "unknown") !== authFilter) return false;
     return true;
-  }), [pins, setById, search, filter, ownedIds]);
+  }).sort((a,b) => {
+    if (sortBy === "name-desc") return b.name.localeCompare(a.name);
+    if (sortBy === "year-new") return (Number(b.release_year) || 0) - (Number(a.release_year) || 0) || a.name.localeCompare(b.name);
+    if (sortBy === "year-old") return (Number(a.release_year) || 9999) - (Number(b.release_year) || 9999) || a.name.localeCompare(b.name);
+    if (sortBy === "owned-first") return Number(ownedIds.has(b.id)) - Number(ownedIds.has(a.id)) || a.name.localeCompare(b.name);
+    if (sortBy === "missing-first") return Number(ownedIds.has(a.id)) - Number(ownedIds.has(b.id)) || a.name.localeCompare(b.name);
+    return a.name.localeCompare(b.name);
+  }), [pins, setById, search, filter, ownedIds, sortBy, yearFilter, authFilter, authByPinId]);
 
   const setCards = useMemo(() => sets.map(set => {
     const setPins = filteredPins.filter(pin => pin.pin_set_id === set.id);
@@ -86,6 +127,95 @@ export default function Catalog({ userId }) {
     return { ...set, visiblePins: setPins, pinCount: allSetPins.length, ownedCount: owned };
   }).filter(set => set.visiblePins.length > 0 || (!search && filter === "sets")), [sets, pins, filteredPins, ownedIds, search, filter]);
   const standalonePins = filteredPins.filter(pin => !pin.pin_set_id);
+
+  async function saveCatalogPinValue(pin) {
+    const item = collectionValues.get(pin.id);
+    if (!item || !userId) return;
+    const raw = item.value.trim();
+    const value = raw === "" ? null : Number(raw);
+    if (value !== null && (!Number.isFinite(value) || value < 0)) { setError("Pin value must be zero or greater."); return; }
+    setSavingValueId(pin.id); setError(""); setMessage("");
+    try {
+      const { error: updateError } = await supabase.from("collection_items").update({ purchase_cost: value }).eq("id", item.id).eq("user_id", userId);
+      if (updateError) throw updateError;
+      setMessage(`Pin value saved for ${pin.name}.`);
+      setCollectionValues(current => new Map(current).set(pin.id, { ...item, value: value == null ? "" : String(value) }));
+    } catch (e) { setError(e.message || "Could not save pin value."); }
+    finally { setSavingValueId(null); }
+  }
+
+  const bulkVisiblePins = pins.filter(pin => {
+    const q = bulkSearch.trim().toLowerCase();
+    if (q && !`${pin.name} ${pin.character_name || ""} ${pin.franchise || ""} ${pin.park || ""} ${pin.catalog_code || ""}`.toLowerCase().includes(q)) return false;
+    if (bulkOnlyMissing && pin.catalog_value != null && String(pin.catalog_value).trim() !== "") return false;
+    return true;
+  }).sort((a, b) => a.name.localeCompare(b.name));
+
+  function updateBulkDraft(pinId, value) {
+    setBulkDrafts(current => new Map(current).set(pinId, value));
+  }
+
+  function toggleBulkPin(pinId, checked) {
+    setBulkSelected(current => {
+      const next = new Set(current);
+      if (checked) next.add(pinId); else next.delete(pinId);
+      return next;
+    });
+  }
+
+  async function saveBulkValues() {
+    if (!supabase || savingBulk) return;
+    const selectedPins = pins.filter(pin => bulkSelected.has(pin.id));
+    if (!selectedPins.length) { setError("Select at least one pin to save."); setMessage(""); return; }
+
+    const changed = [];
+    for (const pin of selectedPins) {
+      const raw = String(bulkDrafts.get(pin.id) ?? "").trim();
+      const value = raw === "" ? null : Number(raw);
+      if (value !== null && (!Number.isFinite(value) || value < 0)) {
+        setError(`Enter a valid value of $0 or more for “${pin.name}”, or leave it blank to clear its shared value.`);
+        setMessage("");
+        return;
+      }
+      const oldValue = pin.catalog_value == null || pin.catalog_value === "" ? null : Number(pin.catalog_value);
+      if (value !== oldValue) changed.push({ pin, value });
+    }
+    if (!changed.length) { setMessage("No selected values have changed. Nothing was saved."); setError(""); return; }
+
+    setSavingBulk(true); setMessage(""); setError("");
+    const savedIds = [];
+    const failures = [];
+    try {
+      for (const item of changed) {
+        const { error: rpcError } = await supabase.rpc("set_pin_catalog_value", {
+          target_pin_id: item.pin.id,
+          new_catalog_value: item.value,
+        });
+        if (rpcError) failures.push(`${item.pin.name}: ${rpcError.message || "save failed"}`);
+        else savedIds.push(item.pin.id);
+      }
+      if (savedIds.length) {
+        const savedValues = new Map(changed.filter(item => savedIds.includes(item.pin.id)).map(item => [item.pin.id, item.value]));
+        setPins(current => current.map(pin => savedValues.has(pin.id) ? { ...pin, catalog_value: savedValues.get(pin.id) } : pin));
+        setBulkDrafts(current => {
+          const next = new Map(current);
+          for (const [id, value] of savedValues) next.set(id, value == null ? "" : String(value));
+          return next;
+        });
+        setBulkSelected(current => { const next = new Set(current); savedIds.forEach(id => next.delete(id)); return next; });
+      }
+      if (failures.length) {
+        setError(`${savedIds.length} value(s) saved; ${failures.length} failed. ${failures.slice(0, 3).join("; ")}`);
+        setMessage("");
+      } else {
+        setMessage(`Saved ${savedIds.length} shared pin value${savedIds.length === 1 ? "" : "s"}. These values are shared across owners and do not change personal purchase costs.`);
+      }
+    } catch (e) {
+      setError(e.message || "Could not save the selected shared pin values.");
+    } finally {
+      setSavingBulk(false);
+    }
+  }
 
   async function importCsv(event) {
     const file = event.target.files?.[0];
@@ -173,21 +303,47 @@ export default function Catalog({ userId }) {
     </div>
     {message && <div className="catalog-message success"><CheckCircle2 size={16}/>{message}</div>}
     {error && <div className="catalog-message error"><CircleHelp size={16}/>{error}</div>}
+    <section className="panel" style={{ margin: "18px 0", padding: "18px" }} aria-labelledby="bulk-value-title">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
+        <div><h2 id="bulk-value-title" style={{ margin: "0 0 4px" }}>Bulk Value Editor</h2><p style={{ margin: 0, opacity: 0.8 }}>Edit shared catalog values for multiple pins. Personal purchase costs are not changed.</p></div>
+        <button type="button" className="button button-gold" onClick={saveBulkValues} disabled={savingBulk || bulkSelected.size === 0}>{savingBulk ? "Saving values…" : `Save selected (${bulkSelected.size})`}</button>
+      </div>
+      <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap", margin: "14px 0" }}>
+        <div className="search-box" style={{ flex: "1 1 240px" }}><Search size={17}/><input aria-label="Search pins for bulk values" value={bulkSearch} onChange={e => setBulkSearch(e.target.value)} placeholder="Search pins by name, character, set…" /></div>
+        <label style={{ display: "flex", alignItems: "center", gap: "7px" }}><input type="checkbox" checked={bulkOnlyMissing} onChange={e => setBulkOnlyMissing(e.target.checked)} /> Show only pins without a value</label>
+        <button type="button" className="button button-secondary" onClick={() => setBulkSelected(current => { const next = new Set(current); bulkVisiblePins.forEach(pin => next.add(pin.id)); return next; })} disabled={!bulkVisiblePins.length}>Select visible</button>
+        <button type="button" className="button button-secondary" onClick={() => setBulkSelected(new Set())} disabled={!bulkSelected.size}>Clear selection</button>
+      </div>
+      <div style={{ display: "grid", gap: "8px", maxHeight: "420px", overflowY: "auto" }}>
+        {bulkVisiblePins.map(pin => <div key={pin.id} style={{ display: "grid", gridTemplateColumns: "24px minmax(0,1fr) minmax(110px,150px)", gap: "10px", alignItems: "center", padding: "9px 0", borderBottom: "1px solid var(--border-color, rgba(127,127,127,.2))" }}>
+          <input type="checkbox" aria-label={`Select ${pin.name}`} checked={bulkSelected.has(pin.id)} onChange={e => toggleBulkPin(pin.id, e.target.checked)} />
+          <div style={{ minWidth: 0 }}><strong style={{ display: "block", overflowWrap: "anywhere" }}>{pin.name}</strong><small style={{ opacity: 0.75 }}>{pin.catalog_value == null ? "Shared value: Not set yet" : `Current shared value: $${Number(pin.catalog_value).toFixed(2)}`}</small></div>
+          <label style={{ display: "grid", gap: "3px", fontSize: "12px" }}><span>Value ($)</span><input aria-label={`Shared value for ${pin.name}`} type="number" min="0" step="0.01" value={bulkDrafts.get(pin.id) ?? ""} placeholder="Not set" onChange={e => updateBulkDraft(pin.id, e.target.value)} /></label>
+        </div>)}
+        {!bulkVisiblePins.length && <p style={{ opacity: 0.8 }}>No pins match these bulk editor filters.</p>}
+      </div>
+      <small style={{ display: "block", marginTop: "10px", opacity: 0.75 }}>Only checked pins are considered when saving. Unchanged values are skipped. Leaving a selected pin’s value blank clears its shared value; deselect it to preserve its existing value.</small>
+    </section>
     <div className="catalog-stats"><div><span>Catalog pins</span><strong>{pins.length.toLocaleString()}</strong></div><div><span>Sets</span><strong>{sets.length.toLocaleString()}</strong></div><div><span>In your collection</span><strong>{pins.filter(pin => ownedIds.has(pin.id)).length.toLocaleString()}</strong></div><div><span>Standalone pins</span><strong>{pins.filter(pin => !pin.pin_set_id).length.toLocaleString()}</strong></div></div>
     <div className="toolbar catalog-toolbar"><div className="search-box"><Search size={17}/><input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search pins, characters, sets, catalog code…"/></div></div>
     <div className="filter-chips catalog-filters">{[{id:"all",label:"All pins"},{id:"sets",label:"Pins in sets"},{id:"standalone",label:"Not in sets"},{id:"owned",label:"I own"},{id:"missing",label:"Still need"}].map(item => <button key={item.id} className={`chip ${filter===item.id?"active":""}`} onClick={() => setFilter(item.id)}>{item.label}</button>)}</div>
+    <div className="catalog-control-row"><label><ArrowUpDown size={15}/> Sort <select value={sortBy} onChange={e => setSortBy(e.target.value)}><option value="name-asc">Name A–Z</option><option value="name-desc">Name Z–A</option><option value="year-new">Release year: newest</option><option value="year-old">Release year: oldest</option><option value="owned-first">Owned first</option><option value="missing-first">Missing first</option></select></label><label>Release year <select value={yearFilter} onChange={e => setYearFilter(e.target.value)}><option value="all">All years</option>{[...new Set(pins.map(p => String(p.release_year || "")).filter(Boolean))].sort((a,b) => Number(b)-Number(a)).map(year => <option key={year} value={year}>{year}</option>)}</select></label><label>Authenticity <select value={authFilter} onChange={e => setAuthFilter(e.target.value)}><option value="all">Any status</option><option value="unknown">Unknown</option><option value="verified_authentic">Verified authentic</option><option value="suspected_counterfeit">Suspected counterfeit</option><option value="confirmed_counterfeit">Confirmed counterfeit</option></select></label><span className="catalog-result-count">{filteredPins.length} pins</span></div>
     {loading ? <div className="panel">Loading catalog…</div> : error && !pins.length ? <div className="panel">The catalog could not be loaded. Check the migration and Supabase permissions.</div> : !pins.length ? <div className="panel catalog-empty"><Layers3 size={30}/><h2>Your catalog is ready for data</h2><p>Import a licensed, accurate CSV of Disney pins to populate current and historical sets. The catalog feature is ready, but a complete catalog dataset has not been bundled because its accuracy and image/data rights need to be verified.</p><button className="button button-gold" onClick={downloadTemplate}>Download CSV template</button></div> : <>
-      {(filter !== "standalone") && setCards.map(set => <section className="catalog-set" key={set.id}><div className="catalog-set-heading"><div className="catalog-set-mark"><Layers3 size={19}/></div><div className="catalog-set-title"><h2>{set.name}</h2><p>{[set.franchise, set.release_year].filter(Boolean).join(" · ") || "Disney pin set"}</p></div><div className="catalog-progress"><strong>{set.ownedCount}/{set.pinCount}</strong><span>collected</span></div></div><div className="catalog-progress-track"><span style={{width: `${set.pinCount ? set.ownedCount / set.pinCount * 100 : 0}%`}}/></div><div className="catalog-pin-grid">{set.visiblePins.map(pin => <CatalogPin key={pin.id} pin={pin} owned={ownedIds.has(pin.id)} userId={userId} onAdded={loadCatalog} setMessage={setMessage} setError={setError} onOpen={() => setSelectedPin(pin)}/>)}</div></section>)}
-      {(filter !== "sets") && standalonePins.length > 0 && <section className="catalog-set"><div className="catalog-set-heading"><div className="catalog-set-mark"><ImageIcon size={19}/></div><div className="catalog-set-title"><h2>Pins Not in Sets</h2><p>Individual releases and standalone pins</p></div><div className="catalog-progress"><strong>{standalonePins.filter(pin => ownedIds.has(pin.id)).length}/{standalonePins.length}</strong><span>collected</span></div></div><div className="catalog-pin-grid">{standalonePins.map(pin => <CatalogPin key={pin.id} pin={pin} owned={ownedIds.has(pin.id)} userId={userId} onAdded={loadCatalog} setMessage={setMessage} setError={setError} onOpen={() => setSelectedPin(pin)}/>)}</div></section>}
+      {(filter !== "standalone") && setCards.map(set => <section className="catalog-set" key={set.id}><div className="catalog-set-heading"><div className="catalog-set-mark"><Layers3 size={19}/></div><div className="catalog-set-title"><h2>{set.name}</h2><p>{[set.franchise, set.release_year].filter(Boolean).join(" · ") || "Disney pin set"}</p></div><div className="catalog-progress"><strong>{set.ownedCount}/{set.pinCount}</strong><span>collected</span></div></div><div className="catalog-progress-track"><span style={{width: `${set.pinCount ? set.ownedCount / set.pinCount * 100 : 0}%`}}/></div><div className="catalog-pin-grid">{set.visiblePins.map(pin => <CatalogPin key={pin.id} pin={pin} sets={sets} owned={ownedIds.has(pin.id)} userId={userId} wishlisted={wishlistedIds.has(pin.id)} authenticityStatus={authByPinId.get(pin.id) || "unknown"} onAdded={loadCatalog} onWishlisted={loadCatalog} onEdited={loadCatalog} setMessage={setMessage} setError={setError} collectionValues={collectionValues} setCollectionValues={setCollectionValues} savingValueId={savingValueId} saveCatalogPinValue={saveCatalogPinValue}/>)}</div></section>)}
+      {(filter !== "sets") && standalonePins.length > 0 && <section className="catalog-set"><div className="catalog-set-heading"><div className="catalog-set-mark"><ImageIcon size={19}/></div><div className="catalog-set-title"><h2>Pins Not in Sets</h2><p>Individual releases and standalone pins</p></div><div className="catalog-progress"><strong>{standalonePins.filter(pin => ownedIds.has(pin.id)).length}/{standalonePins.length}</strong><span>collected</span></div></div><div className="catalog-pin-grid">{standalonePins.map(pin => <CatalogPin key={pin.id} pin={pin} sets={sets} owned={ownedIds.has(pin.id)} userId={userId} wishlisted={wishlistedIds.has(pin.id)} authenticityStatus={authByPinId.get(pin.id) || "unknown"} onAdded={loadCatalog} onWishlisted={loadCatalog} onEdited={loadCatalog} setMessage={setMessage} setError={setError} collectionValues={collectionValues} setCollectionValues={setCollectionValues} savingValueId={savingValueId} saveCatalogPinValue={saveCatalogPinValue}/>)}</div></section>}
       {filteredPins.length === 0 && <div className="panel catalog-empty"><Search size={24}/><h2>No pins match</h2><p>Try a different search or filter.</p></div>}
     </>}
-    {selectedPin && <div className="modal-backdrop" onClick={() => setSelectedPin(null)}><div className="pin-modal" role="dialog" aria-modal="true" aria-labelledby="catalog-pin-detail-title" onClick={(event) => event.stopPropagation()}><button className="modal-close" type="button" onClick={() => setSelectedPin(null)} aria-label="Close pin details">×</button>{selectedPin.image_url ? <img src={selectedPin.image_url} alt={selectedPin.name} style={{width:"100%",maxHeight:360,objectFit:"contain",borderRadius:16}}/> : <div className="pin-art-ring" style={{height:260,display:"grid",placeItems:"center"}}>✦</div>}<div className="eyebrow">PIN CATALOG</div><h2 id="catalog-pin-detail-title">{selectedPin.name}</h2><p>{[selectedPin.character_name, selectedPin.franchise, selectedPin.park, selectedPin.release_year].filter(Boolean).join(" · ")}</p>{selectedPin.catalog_value != null && <p><strong>Pin value:</strong> ${Number(selectedPin.catalog_value).toFixed(2)}</p>}{selectedPin.description && <p>{selectedPin.description}</p>}<button className="button button-secondary button-wide" type="button" onClick={() => setSelectedPin(null)}>Close</button></div></div>}
     <p className="catalog-footnote">Collection progress is based on catalog pins matched to your own inventory. Catalog images and data should come from sources you’re authorized to import.</p>
   </>;
 }
 
-function CatalogPin({ pin, owned, userId, onAdded, setMessage, setError, onOpen }) {
+function CatalogPin({ pin, sets = [], owned, wishlisted, authenticityStatus = "unknown", userId, onAdded, onWishlisted, onEdited, setMessage, setError, collectionValues = new Map(), setCollectionValues, savingValueId, saveCatalogPinValue }) {
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editForm, setEditForm] = useState(() => ({ name: pin.name || "", catalog_code: pin.catalog_code || "", character_name: pin.character_name || "", franchise: pin.franchise || "", park: pin.park || "", release_year: pin.release_year || "", edition_type: pin.edition_type || "", set_number: pin.set_number || "", pin_set_id: pin.pin_set_id || "", image_url: pin.image_url || "", description: pin.description || "" }));
+  const [imageFailed, setImageFailed] = useState(false);
+  const [addingWish, setAddingWish] = useState(false);
   async function addToCollection() {
     if (!supabase || !userId || adding) return;
     setAdding(true); setMessage(""); setError("");
@@ -206,5 +362,67 @@ function CatalogPin({ pin, owned, userId, onAdded, setMessage, setError, onOpen 
     } catch (e) { setError(e.message || "Could not add this pin to your collection."); }
     finally { setAdding(false); }
   }
-  return <article className={`catalog-pin ${owned ? "catalog-pin-owned" : ""}`} onClick={onOpen} role="button" tabIndex={0} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpen?.(); } }}><div className="catalog-pin-art">{pin.image_url ? <img src={pin.image_url} alt={pin.name} loading="lazy"/> : <span>✦</span>}{owned && <span className="catalog-owned-check"><CheckCircle2 size={15}/></span>}</div><div className="catalog-pin-info"><strong title={pin.name}>{pin.name}</strong><span>{[pin.character_name, pin.release_year].filter(Boolean).join(" · ") || pin.franchise || pin.park || "Disney pin"}</span>{pin.set_number && <small>#{pin.set_number}</small>}{pin.catalog_value != null && <small className="catalog-shared-value">Pin value: ${Number(pin.catalog_value).toFixed(2)}</small>}<button className="catalog-add-button" onClick={(event) => { event.stopPropagation(); addToCollection(); }} disabled={adding}>{adding ? "Adding…" : owned ? "+ Add another" : "+ Add to collection"}</button></div></article>;
+  async function addToWishlist() {
+    if (!supabase || !userId || addingWish || wishlisted) return;
+    setAddingWish(true); setMessage(""); setError("");
+    try {
+      const { error: insertError } = await supabase.from("wishlist_items").insert({ user_id: userId, pin_id: pin.id, priority: "normal" });
+      if (insertError) throw insertError;
+      setMessage(`${pin.name} added to your wishlist.`);
+      await onWishlisted();
+    } catch (e) { setError(e.code === "23505" ? "This pin is already on your wishlist." : (e.message || "Could not add this pin to your wishlist.")); }
+    finally { setAddingWish(false); }
+  }
+  async function saveGlobalCatalogValue() {
+    const rawValue = String(editForm.catalog_value ?? "").trim();
+    const value = rawValue === "" ? null : Number(rawValue);
+    if (value !== null && (!Number.isFinite(value) || value < 0)) {
+      setError("Catalog price must be zero or greater.");
+      return;
+    }
+    if (!supabase || !userId || savingEdit) return;
+    setSavingEdit(true); setError(""); setMessage("");
+    try {
+      const { error: priceError } = await supabase.rpc("set_pin_catalog_value", {
+        target_pin_id: pin.id,
+        new_catalog_value: value,
+      });
+      if (priceError) throw priceError;
+      setMessage(`Catalog price saved for ${pin.name}.`);
+      await onEdited?.();
+    } catch (e) {
+      setError(e.message || "Could not save the catalog price. Run the catalog price migration in Supabase first.");
+    } finally { setSavingEdit(false); }
+  }
+
+  async function savePinEdit(event) {
+    event.preventDefault();
+    if (!supabase || !userId || savingEdit) return;
+    if (!editForm.name.trim()) { setError("Pin name is required."); return; }
+    setSavingEdit(true); setMessage(""); setError("");
+    try {
+      const payload = {
+        name: editForm.name.trim(),
+        catalog_code: editForm.catalog_code.trim() || null,
+        character_name: editForm.character_name.trim() || null,
+        franchise: editForm.franchise.trim() || null,
+        park: editForm.park.trim() || null,
+        release_year: editForm.release_year ? Number(editForm.release_year) : null,
+        edition_type: editForm.edition_type.trim() || null,
+        set_number: editForm.set_number.trim() || null,
+        pin_set_id: editForm.pin_set_id || null,
+        image_url: editForm.image_url.trim() || null,
+        description: editForm.description.trim() || null,
+      };
+      const { error: updateError } = await supabase.from("pins").update(payload).eq("id", pin.id).eq("is_catalog", true);
+      if (updateError) throw updateError;
+      setEditing(false);
+      setMessage(`${payload.name} updated in the catalog.`);
+      await onEdited?.();
+    } catch (e) { setError(e.message || "Could not update this catalog pin. Check your Supabase permissions."); }
+    finally { setSavingEdit(false); }
+  }
+  const editField = (key, label, type = "text") => <label className="catalog-edit-field">{label}<input type={type} value={editForm[key]} onChange={e => setEditForm(current => ({ ...current, [key]: e.target.value }))} /></label>;
+  const photo = pin.display_image_url || pin.image_url;
+  return <article className={`catalog-pin ${owned ? "catalog-pin-owned" : ""}`}><div className="catalog-pin-art">{photo && !imageFailed ? <img src={photo} alt={pin.name} loading="lazy" onError={() => setImageFailed(true)}/> : <span>✦</span>}{owned && <span className="catalog-owned-check"><CheckCircle2 size={15}/></span>}</div><div className="catalog-pin-info"><strong title={pin.name}>{pin.name}</strong><span>{[pin.character_name, pin.release_year].filter(Boolean).join(" · ") || pin.franchise || pin.park || "Disney pin"}</span>{pin.set_number && <small>#{pin.set_number}</small>}<span className={`authenticity-badge authenticity-${authenticityStatus}`}>{({unknown:"Authenticity: Unknown",verified_authentic:"Marked authentic by catalog creator",suspected_counterfeit:"Marked suspected counterfeit by catalog creator",confirmed_counterfeit:"Marked counterfeit by catalog creator"})[authenticityStatus] || "Authenticity: Unknown"}</span><button className="catalog-add-button" onClick={addToCollection} disabled={adding}>{adding ? "Adding…" : owned ? "+ Add another" : "+ Add to collection"}</button><button type="button" className={`catalog-wishlist-button ${wishlisted ? "is-wishlisted" : ""}`} onClick={addToWishlist} disabled={addingWish || wishlisted}><Heart size={14} fill={wishlisted ? "currentColor" : "none"}/>{addingWish ? "Adding…" : wishlisted ? "On wishlist" : "Add to wishlist"}</button><button type="button" className="catalog-edit-button" onClick={() => { setEditForm({ name: pin.name || "", catalog_code: pin.catalog_code || "", character_name: pin.character_name || "", franchise: pin.franchise || "", park: pin.park || "", release_year: pin.release_year || "", edition_type: pin.edition_type || "", set_number: pin.set_number || "", pin_set_id: pin.pin_set_id || "", image_url: pin.image_url || "", description: pin.description || "", catalog_value: pin.catalog_value == null ? "" : String(pin.catalog_value) }); setEditing(true); }}><span aria-hidden="true">✎</span> Edit pin</button></div>{editing && <div className="catalog-edit-backdrop" role="presentation" onMouseDown={e => { if (e.target === e.currentTarget && !savingEdit) setEditing(false); }}><form className="catalog-edit-modal" role="dialog" aria-modal="true" aria-label={`Edit ${pin.name}`} onSubmit={savePinEdit}><div className="catalog-edit-heading"><div><span className="eyebrow">PIN CATALOG</span><h2>Edit pin</h2></div><button type="button" className="catalog-edit-close" aria-label="Close edit form" onClick={() => setEditing(false)} disabled={savingEdit}>×</button></div><div className="catalog-edit-grid">{editField("name", "Pin name *")}{editField("catalog_code", "Catalog code")}<label className="catalog-edit-field">Characters (separate with commas)<input type="text" value={editForm.character_name} placeholder="e.g. Mickey Mouse, Minnie Mouse, Pluto" onChange={e => setEditForm(current => ({ ...current, character_name: e.target.value }))} /></label>{editField("franchise", "Franchise")}{editField("park", "Park / location")}{editField("release_year", "Release year", "number")}{editField("edition_type", "Edition type")}{editField("set_number", "Set number")}<label className="catalog-edit-field">Pin set<select value={editForm.pin_set_id} onChange={e => setEditForm(current => ({ ...current, pin_set_id: e.target.value }))}><option value="">Not in a set</option>{sets.map(set => <option key={set.id} value={set.id}>{set.name}</option>)}</select></label>{editField("image_url", "Image URL", "url")}<label className="catalog-edit-field catalog-edit-wide">Description<textarea rows="3" value={editForm.description} onChange={e => setEditForm(current => ({ ...current, description: e.target.value }))}/></label><div className="catalog-edit-field catalog-price-editor"><label htmlFor={`catalog-value-${pin.id}`}>Catalog price ($)</label><input id={`catalog-value-${pin.id}`} type="number" min="0" step="0.01" value={editForm.catalog_value ?? ""} placeholder="Not set" onChange={e => setEditForm(current => ({ ...current, catalog_value: e.target.value }))}/><button type="button" className="button button-secondary" onClick={saveGlobalCatalogValue} disabled={savingEdit}>{savingEdit ? "Saving…" : "Save catalog price"}</button><small>This shared catalog price can be edited even if you don't own the pin or didn't create its catalog entry. It is separate from your personal collection purchase cost.</small></div></div><div className="catalog-edit-actions"><button type="button" className="button button-secondary" onClick={() => setEditing(false)} disabled={savingEdit}>Cancel</button><button type="submit" className="button button-primary" disabled={savingEdit}>{savingEdit ? "Saving…" : "Save changes"}</button></div></form></div>}</article>;
 }
