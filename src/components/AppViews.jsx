@@ -124,7 +124,7 @@ export function PinCard({ pin, onClick, onEdit }) {
 export function Dashboard({ setPage, pins = [], wishlistItems = [], loading = false }) {
   const owned = pins.reduce((sum, pin) => sum + Number(pin.owned || 0), 0);
   const tradeable = pins.reduce((sum, pin) => sum + Number(pin.tradeable || 0), 0);
-  const costTotal = pins.reduce((sum, pin) => sum + (Number(pin.purchaseCost) || 0), 0);
+  const costTotal = pins.reduce((sum, pin) => sum + ((Number(pin.catalogValue) || 0) * (Number(pin.owned) || 0)), 0);
   const setCount = new Set(pins.map(pin => pin.set).filter(Boolean)).size;
   const matches = wishlistItems.filter(wish => pins.some(pin => pin.id === wish.pinId));
   return (
@@ -141,7 +141,7 @@ export function Dashboard({ setPage, pins = [], wishlistItems = [], loading = fa
       </div>
       <div className="stat-grid">
         <StatCard icon={GalleryVerticalEnd} label="Pins owned" value={loading ? "…" : owned} note={`${pins.length} unique designs`} tone="tone-blue" />
-        <StatCard icon={ChartNoAxesCombined} label="Recorded cost" value={loading ? "…" : `$${costTotal.toFixed(2)}`} note="Based on costs you entered" tone="tone-gold" />
+        <StatCard icon={ChartNoAxesCombined} label="Recorded cost" value={loading ? "…" : `$${costTotal.toFixed(2)}`} note="Shared pin value × copies owned" tone="tone-gold" />
         <StatCard icon={Layers3} label="Collections / sets" value={loading ? "…" : setCount} note="Distinct catalog groups" tone="tone-purple" />
         <StatCard icon={Repeat2} label="Tradeable copies" value={loading ? "…" : tradeable} note="Marked available to trade" tone="tone-green" />
       </div>
@@ -744,12 +744,12 @@ export function MorePage({ setPage, session, onAvatarUpdated }) {
       if (!supabase || !session?.user?.id) { setProfileLoading(false); return; }
       const [profileResult, collectionResult, catalogResult] = await Promise.all([
         supabase.from("profiles").select("username,display_name,bio,avatar_url,is_collection_public").eq("id", session.user.id).maybeSingle(),
-        supabase.from("collection_items").select("purchase_cost,pin:pins(franchise,park)").eq("user_id", session.user.id),
+        supabase.from("collection_items").select("owned_quantity,pin:pins(franchise,park,catalog_value)").eq("user_id", session.user.id),
         supabase.from("pins").select("id,franchise,park"),
       ]);
       if (!active) return;
       if (profileResult.data) setProfile({ username: profileResult.data.username || "", display_name: profileResult.data.display_name || "", bio: profileResult.data.bio || "", avatar_url: profileResult.data.avatar_url || "", is_collection_public: !!profileResult.data.is_collection_public });
-      if (collectionResult.data) setCostTotal(collectionResult.data.reduce((sum,row) => sum + (Number(row.purchase_cost) || 0), 0));
+      if (collectionResult.data) setCostTotal(collectionResult.data.reduce((sum,row) => sum + ((Number(row.pin?.catalog_value) || 0) * (Number(row.owned_quantity) || 0)), 0));
       if (catalogResult.data && collectionResult.data) {
         const groups = new Map();
         for (const pin of catalogResult.data) { const name = pin.franchise || pin.park || "Uncategorized"; groups.set(name, (groups.get(name) || 0) + 1); }
@@ -865,7 +865,7 @@ export function MorePage({ setPage, session, onAvatarUpdated }) {
         {profileMessage && <p role="status">{profileMessage}</p>}
       </form>}
     </section>
-    <section className="panel" style={{marginTop:20}}><div className="panel-heading"><div><h2>Collection report</h2><p>Based on the information you've entered, not live market prices.</p></div><ChartNoAxesCombined size={20}/></div><div className="wishlist-summary"><div><span className="eyebrow">RECORDED Pin value</span><strong>${costTotal.toFixed(2)}</strong></div><div><span className="eyebrow">CATALOG GROUPS</span><strong>{setStats.length}</strong></div><div><span className="eyebrow">GROUPS YOU OWN</span><strong>{setStats.filter(group=>group.represented).length}</strong></div></div><p className="subtle-count">Pinfolio does not currently fetch verified resale prices, so this report is not a market valuation.</p></section>
+    <section className="panel" style={{marginTop:20}}><div className="panel-heading"><div><h2>Collection report</h2><p>Based on the shared pin values in your catalog and the quantities you own, not live market prices.</p></div><ChartNoAxesCombined size={20}/></div><div className="wishlist-summary"><div><span className="eyebrow">SHARED COLLECTION VALUE</span><strong>${costTotal.toFixed(2)}</strong></div><div><span className="eyebrow">CATALOG GROUPS</span><strong>{setStats.length}</strong></div><div><span className="eyebrow">GROUPS YOU OWN</span><strong>{setStats.filter(group=>group.represented).length}</strong></div></div><p className="subtle-count">Pinfolio does not currently fetch verified resale prices, so this report is not a market valuation.</p></section>
     <section className="panel" style={{marginTop:20}}><div className="panel-heading"><div><h2>Set overview</h2><p>Groups are based on franchise or park values in your catalog.</p></div><Layers3 size={20}/></div>{setStats.length === 0 ? <p>Add catalog pins with a franchise or park to start an overview.</p> : <div className="recent-list">{setStats.map(group=><div className="recent-row" key={group.name}><div className="recent-copy"><strong>{group.name}</strong><span>{group.represented ? "You own pins in this group" : "No pins owned yet"}</span></div><span className="subtle-count">{group.total} catalog {group.total===1?"pin":"pins"}</span></div>)}</div>}</section>
     <section className="panel" style={{marginTop:20}}><div className="panel-heading"><div><h2>Authenticity notes</h2><p>Record your assessment on each collection pin.</p></div><ShieldCheck size={20}/></div><p>Open Collection → Edit on any pin to record its authenticity status, notes, and photo. These are personal records, not an official authentication service.</p><button className="button button-secondary" onClick={() => setPage("Collection")}>Manage collection</button></section>
     <div className="security-card" style={{marginTop:20}}><LockKeyhole size={20}/><div><strong>Privacy controls</strong><p>Collection items default to private. Set individual pins to friends or public in their edit form. Supabase policies enforce access on the server.</p></div></div>

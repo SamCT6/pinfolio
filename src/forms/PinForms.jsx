@@ -35,23 +35,6 @@ function AutocompleteField({ label, value, onChange, options = [], placeholder =
 }
 
 export function PinDetail({ pin, onClose, onEdit, onRemove }) {
-  const [sharedValue, setSharedValue] = useState(pin?.catalogValue ?? null);
-
-  useEffect(() => {
-    let active = true;
-    async function loadSharedValue() {
-      if (!pin?.id || !supabase) return;
-      const { data, error } = await supabase
-        .from("pins")
-        .select("catalog_value")
-        .eq("id", pin.id)
-        .maybeSingle();
-      if (!error && active) setSharedValue(data?.catalog_value ?? null);
-    }
-    loadSharedValue();
-    return () => { active = false; };
-  }, [pin?.id]);
-
   if (!pin) return null;
 
   return (
@@ -93,16 +76,16 @@ export function PinDetail({ pin, onClose, onEdit, onRemove }) {
           </div>
         </div>
 
-        {sharedValue != null && (
-          <p>
-            <strong>Pin value:</strong>{" "}
-            ${Number(sharedValue).toFixed(2)}
-          </p>
-        )}
+        <p>
+          <strong>Pin value:</strong>{" "}
+          {pin.catalogValue != null && pin.catalogValue !== ""
+            ? `$${Number(pin.catalogValue).toFixed(2)}`
+            : "Not set yet"}
+        </p>
 
-        {pin.purchaseCost != null && (
+        {pin.purchaseCost != null && pin.purchaseCost !== "" && (
           <p>
-            <strong>Purchase cost:</strong>{" "}
+            <strong>Your purchase cost:</strong>{" "}
             ${Number(pin.purchaseCost).toFixed(2)}
           </p>
         )}
@@ -365,6 +348,16 @@ export function AddPinForm({ onClose, onSaved, userId }) {
       }
 
       if (!pinId) throw new Error("Choose a catalog pin or create a new one.");
+
+      // The pin value is shared catalog data, not a per-user purchase cost.
+      // Only overwrite it when the user entered a value; blank leaves an existing shared value intact.
+      if (purchaseCost !== null) {
+        const { error: valueError } = await supabase.rpc("set_pin_catalog_value", {
+          target_pin_id: pinId,
+          new_catalog_value: purchaseCost,
+        });
+        if (valueError) throw valueError;
+      }
 
       const { error: itemError } = await supabase
         .from("collection_items")
@@ -834,7 +827,7 @@ export function EditCollectionForm({ pin, session, onClose, onSaved }) {
     String(pin.tradeable ?? 0)
   );
   const [purchaseCost, setPurchaseCost] = useState(
-    pin.purchaseCost ?? ""
+    pin.catalogValue ?? ""
   );
   const [authenticityStatus, setAuthenticityStatus] = useState(
     pin.authenticityStatus || "unknown"
@@ -1024,12 +1017,18 @@ try {
   }).eq("id", pin.id);
   if (pinUpdateError) throw pinUpdateError;
 
+  // Save the value on the shared catalog pin, not just this user's collection row.
+  const { error: sharedValueError } = await supabase.rpc("set_pin_catalog_value", {
+    target_pin_id: pin.id,
+    new_catalog_value: cost,
+  });
+  if (sharedValueError) throw sharedValueError;
+
   const { error: updateError } = await supabase
     .from("collection_items")
     .update({
       owned_quantity: ownedCount,
       tradeable_quantity: tradeableCount,
-      purchase_cost: cost,
       authenticity_status: authenticityStatus,
       visibility,
       photo_url: personalPhotoUrl,
@@ -1151,7 +1150,7 @@ try {
             onChange={(event) => setTradeable(event.target.value)}
           />
 
-          <label htmlFor="collection-cost">Total Pin value (optional)</label>
+          <label htmlFor="collection-cost">Shared pin value (updates everyone)</label>
           <input
             id="collection-cost"
             type="number"
@@ -1161,6 +1160,7 @@ try {
             onChange={(event) => setPurchaseCost(event.target.value)}
             placeholder="e.g. 12.50"
           />
+          <small>Changing this value updates the shared catalog value and the collection-value total on every owner’s dashboard.</small>
 
           <label htmlFor="collection-authenticity">Authenticity</label>
           
