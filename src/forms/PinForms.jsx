@@ -35,6 +35,23 @@ function AutocompleteField({ label, value, onChange, options = [], placeholder =
 }
 
 export function PinDetail({ pin, onClose, onEdit, onRemove }) {
+  const [sharedValue, setSharedValue] = useState(pin?.catalogValue ?? null);
+
+  useEffect(() => {
+    let active = true;
+    async function loadSharedValue() {
+      if (!pin?.id || !supabase) return;
+      const { data, error } = await supabase
+        .from("pins")
+        .select("catalog_value")
+        .eq("id", pin.id)
+        .maybeSingle();
+      if (!error && active) setSharedValue(data?.catalog_value ?? null);
+    }
+    loadSharedValue();
+    return () => { active = false; };
+  }, [pin?.id]);
+
   if (!pin) return null;
 
   return (
@@ -76,9 +93,16 @@ export function PinDetail({ pin, onClose, onEdit, onRemove }) {
           </div>
         </div>
 
-        {pin.purchaseCost != null && (
+        {sharedValue != null && (
           <p>
             <strong>Pin value:</strong>{" "}
+            ${Number(sharedValue).toFixed(2)}
+          </p>
+        )}
+
+        {pin.purchaseCost != null && (
+          <p>
+            <strong>Purchase cost:</strong>{" "}
             ${Number(pin.purchaseCost).toFixed(2)}
           </p>
         )}
@@ -332,7 +356,6 @@ export function AddPinForm({ onClose, onSaved, userId }) {
             pin_set_id: pinSetId,
             created_by: userId,
             is_catalog: true,
-            authenticity_status: authenticityStatus,
           })
           .select("id")
           .single();
